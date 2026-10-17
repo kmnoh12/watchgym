@@ -68,6 +68,9 @@ class OtaDownloadWorker(context: Context, parameters: WorkerParameters) : Corout
                     archive.applicationInfo?.metaData?.getString("dev.kyungmin.kcoach.OTA_ROLE") == coordinator.config.role.name) { "앱 종류·버전이 맞지 않아요" }
                 check(part.renameTo(apk)) { "업데이트 파일 저장 실패" }
             } finally { connection.disconnect() }
+            // Write the verified file into an install session now, so that the tap only has to commit it.
+            coordinator.change(id) { it.copy(progress = 100, message = "설치 준비 중") }
+            coordinator.store.local()?.takeIf { it.id == id }?.let { OtaInstaller.stage(applicationContext, coordinator.store, it.copy(phase = OtaPhase.READY), alreadyVerified = true) }
             coordinator.change(id) { it.copy(phase = OtaPhase.READY, progress = 100, message = "다운로드·파일 검증 완료") }
             Result.success()
         } catch (cancelled: kotlinx.coroutines.CancellationException) {

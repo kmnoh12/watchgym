@@ -1,18 +1,16 @@
 package dev.kyungmin.kcoach.updates
 
 import android.app.Activity
-import android.app.PendingIntent
 import android.content.Intent
-import android.content.pm.PackageInstaller
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.TextView
 import java.lang.ref.WeakReference
-import java.security.MessageDigest
 import java.util.concurrent.Executors
 
-/** The only extra screen prepares the OS installer; it offers no independent watch update check. */
+/**
+ * Only used when the install permission still has to be granted, or when the install is started from a notification.
+ * It has no content and a transparent window, so nothing flashes; the usual tap commits without opening it at all.
+ */
 class OtaInstallActivity : Activity() {
     private lateinit var coordinator: OtaCoordinator
     private var id = ""
@@ -23,7 +21,6 @@ class OtaInstallActivity : Activity() {
         coordinator = OtaCoordinator.get(this)
         id = intent.getStringExtra("id").orEmpty()
         permissionOpened = savedInstanceState?.getBoolean("permissionOpened") == true
-        setContentView(TextView(this).apply { text = "업데이트 설치 준비 중…"; textSize = 18f; setPadding(24, 36, 24, 24) })
         if (coordinator.store.local()?.id != id) { finish(); return }
         current = WeakReference(this)
         if (!packageManager.canRequestPackageInstalls() && !permissionOpened) {
@@ -53,30 +50,12 @@ class OtaInstallActivity : Activity() {
         executor.execute {
             runCatching {
                 val state = requireNotNull(coordinator.store.local()?.takeIf { it.id == id })
-                val apk = coordinator.store.apk(id); require(apk.isFile) { "업데이트 파일이 없어 다시 확인해야 해요" }
-                val digest = MessageDigest.getInstance("SHA-256")
-                apk.inputStream().use { input -> val buffer = ByteArray(64 * 1024); while (true) {
-                    val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count)
-                } }
-                require(digest.digest().joinToString("") { "%02x".format(it) } == state.sha256) { "APK 파일 검증 실패" }
-                val installer = packageManager.packageInstaller
-                var sessionId = coordinator.store.sessionId()
-                if (sessionId < 0 || installer.getSessionInfo(sessionId) == null) {
-                    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-                    params.setAppPackageName(packageName)
-                    if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
-                    sessionId = installer.createSession(params)
-                    coordinator.store.setSessionId(sessionId)
-                    installer.openSession(sessionId).use { session -> apk.inputStream().use { input ->
-                        session.openWrite("base.apk", 0, apk.length()).use { output -> input.copyTo(output); session.fsync(output) }
-                    } }
-                }
+                if (coordinator.store.stage() == OtaStage.NONE) coordinator.store.setStage(OtaStage.COMMIT)
                 coordinator.change(id) { it.copy(phase = OtaPhase.INSTALLING, message = "운영체제 설치 확인 대기") }
-                val callback = Intent(this, OtaInstallReceiver::class.java).setAction("dev.kyungmin.kcoach.OTA_RESULT").putExtra("id", id)
-                val pending = PendingIntent.getBroadcast(this, sessionId, callback, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
-                installer.openSession(sessionId).use { it.commit(pending.intentSender) }
+                OtaInstaller.commit(this, coordinator.store, state)
+                if (coordinator.store.stage() != OtaStage.OS) coordinator.store.setStage(OtaStage.RUN)
             }.onFailure { error ->
-                coordinator.store.setSessionId(-1)
+                coordinator.store.setSessionId(-1); coordinator.store.setStage(OtaStage.NONE)
                 coordinator.change(id) { it.copy(phase = OtaPhase.FAILED, message = error.message.orEmpty().take(300)) }
                 runOnUiThread { finish() }
             }

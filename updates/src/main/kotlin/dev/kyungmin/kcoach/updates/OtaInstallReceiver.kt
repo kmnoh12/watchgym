@@ -9,7 +9,7 @@ import android.os.Build
 class OtaInstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val coordinator = OtaCoordinator.get(context)
-        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) { coordinator.recover(); return }
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) { coordinator.afterReplaced(); coordinator.recover(); return }
         val state = coordinator.store.local()?.takeIf { it.id == intent.getStringExtra("id") } ?: return
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -18,11 +18,13 @@ class OtaInstallReceiver : BroadcastReceiver() {
                 if (confirmation == null) {
                     coordinator.change(state.id) { it.copy(phase = OtaPhase.FAILED, message = "설치 확인 화면이 없어요") }; return
                 }
+                coordinator.store.setStage(OtaStage.OS)
                 coordinator.change(state.id) { it.copy(phase = OtaPhase.USER_ACTION_REQUIRED, message = "운영체제 설치 확인 필요") }
-                if (!OtaInstallActivity.showConfirmation(state.id, confirmation))
+                if (!coordinator.showConfirmation(state.id, confirmation))
                     OtaNotifications.offer(context, confirmation, "업데이트 설치를 확인해 주세요")
             }
             PackageInstaller.STATUS_SUCCESS -> {
+                coordinator.afterReplaced()
                 val (code, _) = coordinator.installed()
                 if (code >= state.targetCode) {
                     coordinator.change(state.id) { it.copy(phase = OtaPhase.INSTALLED, installedCode = code, message = "실제 설치 버전 확인") }

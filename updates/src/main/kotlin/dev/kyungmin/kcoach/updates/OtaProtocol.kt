@@ -57,9 +57,72 @@ data class OtaDeviceState(val id: String, val instance: String, val revision: Lo
 internal val OTA_ID = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,159}")
 internal val OTA_HASH = Regex("[a-f0-9]{64}")
 
-data class OtaUi(val message: String, val busy: Boolean, val readyToInstall: Boolean)
+data class OtaUi(val message: String, val busy: Boolean, val readyToInstall: Boolean, val card: OtaCard? = null)
+
+enum class OtaRowKind { IDLE, WORKING, READY, DONE, FAIL }
+/** One device's line of the update card: "폰" or "워치", its status, and a 0..1 [progress] when one is known. */
+data class OtaRow(val device: String, val text: String, val kind: OtaRowKind, val progress: Float? = null)
+enum class OtaAction { CHECK, INSTALL, WORKING, RETRY }
+/**
+ * What the menu's update card shows. The card always has the same two rows and one button, so nothing moves while the
+ * state changes; [watch] is null only when no watch is expected.
+ */
+data class OtaCard(val headline: String, val phone: OtaRow, val watch: OtaRow?, val action: OtaAction, val actionLabel: String)
 
 object OtaPresentation {
+    private fun phaseRow(device: String, s: OtaDeviceState?): OtaRow = when (s?.phase) {
+        null -> OtaRow(device, "응답 대기", OtaRowKind.IDLE)
+        OtaPhase.QUEUED -> OtaRow(device, "대기 중", OtaRowKind.WORKING)
+        OtaPhase.CHECKING -> OtaRow(device, "확인 중", OtaRowKind.WORKING)
+        OtaPhase.DOWNLOADING -> OtaRow(device, "다운로드 ${s.progress}%", OtaRowKind.WORKING, s.progress / 100f)
+        OtaPhase.READY -> OtaRow(device, "${s.targetName} 설치 준비됨", OtaRowKind.READY)
+        OtaPhase.UP_TO_DATE -> OtaRow(device, "최신 · ${s.installedName}", OtaRowKind.DONE)
+        OtaPhase.USER_ACTION_REQUIRED -> OtaRow(device, "${s.targetName} 설치 준비됨", OtaRowKind.READY)
+        OtaPhase.INSTALLING -> OtaRow(device, "설치 중", OtaRowKind.WORKING)
+        OtaPhase.INSTALLED -> OtaRow(device, "설치됨 · ${s.installedName}", OtaRowKind.DONE)
+        OtaPhase.FAILED -> OtaRow(device, "실패 · ${s.message.take(40)}", OtaRowKind.FAIL)
+    }
+
+    /** The card for the menu. [stage] and [installProgress] are this device's own, set by the tap ([OtaStage]). */
+    fun card(local: OtaDeviceState?, peer: OtaDeviceState?, peerExpected: Boolean, waitingForPeer: Boolean,
+        stage: String, installProgress: Int): OtaCard {
+        val phone = when (stage) {
+            OtaStage.PEER -> OtaRow("폰", "워치 요청 뒤 설치", OtaRowKind.WORKING)
+            OtaStage.COMMIT -> OtaRow("폰", "설치 시작", OtaRowKind.WORKING)
+            OtaStage.OS -> OtaRow("폰", "설치 확인", OtaRowKind.WORKING)
+            OtaStage.RUN -> OtaRow("폰", "설치 중", OtaRowKind.WORKING, installProgress.takeIf { it > 0 }?.div(100f))
+            else -> phaseRow("폰", local)
+        }
+        val watch = if (!peerExpected) null else when {
+            waitingForPeer && stage == OtaStage.PEER -> OtaRow("워치", "설치 요청 중", OtaRowKind.WORKING)
+            peer?.phase == OtaPhase.USER_ACTION_REQUIRED -> OtaRow("워치", "워치에서 설치 확인", OtaRowKind.WORKING)
+            else -> phaseRow("워치", peer)
+        }
+        val rows = listOfNotNull(phone, watch)
+        val working = rows.any { it.kind == OtaRowKind.WORKING }
+        val installing = stage != OtaStage.NONE || rows.any { it.kind == OtaRowKind.WORKING && it.text.startsWith("설치") || it.text.startsWith("워치에서") }
+        val ready = rows.any { it.kind == OtaRowKind.READY }
+        val failed = rows.any { it.kind == OtaRowKind.FAIL }
+        val target = (local?.targetName?.takeIf { it.isNotBlank() } ?: peer?.targetName).orEmpty()
+        val (action, label) = when {
+            working && installing -> OtaAction.WORKING to "설치 중"
+            working -> OtaAction.WORKING to "확인 중"
+            ready -> OtaAction.INSTALL to "설치"
+            failed -> OtaAction.RETRY to "다시 시도"
+            else -> OtaAction.CHECK to "업데이트 확인"
+        }
+        val headline = when {
+            working && installing -> "업데이트하는 중"
+            working -> "업데이트 확인 중"
+            ready -> if (target.isNotEmpty()) "$target 업데이트가 준비됐어요" else "업데이트가 준비됐어요"
+            failed -> "업데이트하지 못했어요"
+            rows.all { it.kind == OtaRowKind.DONE } && rows.any { it.text.startsWith("설치됨") } -> "업데이트를 마쳤어요"
+            rows.all { it.kind == OtaRowKind.DONE } -> "최신 버전이에요"
+            else -> "업데이트를 확인해 보세요"
+        }
+        return OtaCard(headline, phone, watch, action, label)
+    }
+
     fun summarize(local: OtaDeviceState?, peer: OtaDeviceState?, peerExpected: Boolean, awaitingAcceptance: Boolean): OtaUi {
         fun label(s: OtaDeviceState?) = when (s?.phase) {
             null -> "응답 대기 · 요청 보관 중"
