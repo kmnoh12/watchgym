@@ -52,8 +52,9 @@ class OtaInstallActivity : Activity() {
                 val state = requireNotNull(coordinator.store.local()?.takeIf { it.id == id })
                 if (coordinator.store.stage() == OtaStage.NONE) coordinator.store.setStage(OtaStage.COMMIT)
                 coordinator.change(id) { it.copy(phase = OtaPhase.INSTALLING, message = "운영체제 설치 확인 대기") }
+                coordinator.store.setStage(OtaStage.RUN)
                 OtaInstaller.commit(this, coordinator.store, state)
-                if (coordinator.store.stage() != OtaStage.OS) coordinator.store.setStage(OtaStage.RUN)
+                runOnUiThread { finish() }
             }.onFailure { error ->
                 coordinator.store.setSessionId(-1); coordinator.store.setStage(OtaStage.NONE)
                 coordinator.change(id) { it.copy(phase = OtaPhase.FAILED, message = error.message.orEmpty().take(300)) }

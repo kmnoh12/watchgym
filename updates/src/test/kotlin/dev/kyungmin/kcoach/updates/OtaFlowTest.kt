@@ -130,6 +130,67 @@ class OtaFlowTest {
         activity.pause().stop().destroy()
     }
 
+    @Test fun failedWatchRequestReleasesThePhoneAndAllowsRetry() {
+        val (c, _) = readyPhone()
+        val id = c.store.local()!!.id
+        c.receive(OtaDataLayer.STATE_PATH, OtaDeviceState(id, "watch-instance", 1, c.store.command()!!.sequence,
+            OtaPhase.READY, 5, "w5", 6, "w6", hash, 100).encode(), "watch-node")
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        c.installBoth(activity.get())
+        val sequence = c.store.command()!!.sequence
+        c.receive(OtaDataLayer.STATE_PATH, OtaDeviceState(id, "watch-instance", 2, sequence,
+            OtaPhase.FAILED, 5, "w5", message = "취소됨").encode(), "watch-node")
+        assertFalse(c.store.waitingForPeer())
+        assertEquals(OtaStage.NONE, c.store.stage())
+        assertEquals(OtaAction.INSTALL, c.ui().card!!.action)
+        idle(9_000)
+        assertEquals(-1, c.store.sessionId())
+        activity.pause().stop().destroy()
+    }
+
+    @Test fun installationStaysBusyUntilItFinishesOrFails() {
+        val (c, _) = readyPhone()
+        c.change(c.store.local()!!.id) { it.copy(phase = OtaPhase.INSTALLING) }
+        c.store.setStage(OtaStage.RUN)
+        assertTrue(c.ui().busy)
+        assertFalse(c.ui().readyToInstall)
+        val command = c.store.command()!!.id
+        c.checkBoth()
+        assertEquals(command, c.store.command()!!.id)
+    }
+
+    @Test fun recoveringTheInstalledVersionBeforeTheBroadcastStillSavesTheNotice() {
+        val (c, _) = readyPhone()
+        version(6)
+        c.recover()
+        assertEquals(OtaPhase.INSTALLED, c.store.local()!!.phase)
+        assertEquals("v6", c.store.notice()?.to)
+        c.store.clearNotice()
+        c.afterReplaced()
+        assertNull("A late broadcast must not show the banner twice", c.store.notice())
+    }
+
+    @Test fun readyPhoneCanInstallWhileTheWatchIsStillDownloading() {
+        val card = OtaPresentation.card(state(OtaPhase.READY), state(OtaPhase.DOWNLOADING, progress = 20),
+            true, false, OtaStage.NONE, 0)
+        assertEquals(OtaAction.INSTALL, card.action)
+    }
+
+    @Test fun watchOnlyInstallRemainsBusyWhileItsAcknowledgementIsPending() {
+        val (c, _) = readyPhone()
+        val id = c.store.local()!!.id
+        c.change(id) { it.copy(phase = OtaPhase.UP_TO_DATE, targetCode = 5) }
+        c.receive(OtaDataLayer.STATE_PATH, OtaDeviceState(id, "watch-instance", 1, c.store.command()!!.sequence,
+            OtaPhase.READY, 5, "w5", 6, "w6", hash, 100).encode(), "watch-node")
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        c.installBoth(activity.get())
+        assertTrue(c.ui().busy)
+        assertFalse(c.ui().readyToInstall)
+        assertEquals(OtaAction.WORKING, c.ui().card!!.action)
+        assertEquals("설치 요청 중", c.ui().card!!.watch!!.text)
+        activity.pause().stop().destroy()
+    }
+
     @Test fun afterTheAppIsReplacedTheFirstScreenGetsOneNoticeAndTheStageIsCleared() {
         val (c, _) = readyPhone()
         c.store.setStage(OtaStage.RUN)

@@ -57,6 +57,28 @@ class OtaInstallActivityTest {
         assertEquals(5L, c.store.local()!!.installedCode)
         restored.pause().stop().destroy()
     }
+    @Test fun committedPermissionFlowClosesEvenWhenTheSystemRejectsThePackage() {
+        val c = prepare()
+        val bytes = c.store.apk("request").readBytes()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        c.change("request") { it.copy(sha256 = hash) }
+        val controller = launch().setup()
+        shadowOf(RuntimeEnvironment.getApplication().packageManager).setCanRequestPackageInstalls(true)
+        controller.pause().resume()
+        val deadline = System.nanoTime() + 3_000_000_000L
+        while (!controller.get().isFinishing && System.nanoTime() < deadline) {
+            shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(10)
+        }
+        // Robolectric sends the commit callback without an OS status for this fake APK.
+        // Reaching the receiver's rejection proves commit ran; the transparent window must still close.
+        assertEquals(OtaPhase.FAILED, c.store.local()!!.phase)
+        assertEquals("설치가 취소되거나 실패했어요", c.store.local()!!.message)
+        assertEquals("A fast OS result must not be overwritten by RUN after commit returns", OtaStage.NONE, c.store.stage())
+        assertTrue("The permission window must not intercept touches after the install starts", controller.get().isFinishing)
+        controller.pause().stop().destroy()
+        shadowOf(RuntimeEnvironment.getApplication().packageManager).setCanRequestPackageInstalls(false)
+    }
+
     @Test fun deniedPermissionBecomesARecoverableFailureInsteadOfAnInstallerOrSuccess() {
         val c = prepare(); val controller = launch().setup()
         val settings = shadowOf(controller.get()).nextStartedActivityForResult

@@ -20,12 +20,12 @@ class UpdateProgressUiTest {
         compose.setContent { MenuScreen("test", MenuActions({ checks++; report = it }, { installs++; null }, {})) }
         compose.onNodeWithText("업데이트 확인").performScrollTo().performClick()
         compose.runOnIdle { report(UpdateUi("manifest 확인 중", false, busy = true)) }
-        compose.onNodeWithText("업데이트 진행 중…").performClick()
+        compose.onNodeWithTag("updateAction").performTouchInput { click() }
         compose.runOnIdle { report(UpdateUi("APK 다운로드 중", false, busy = true)) }
-        compose.onNodeWithText("업데이트 진행 중…").performClick()
+        compose.onNodeWithTag("updateAction").performTouchInput { click() }
         assertEquals(1, checks)
         compose.runOnIdle { report(UpdateUi("다운로드 완료", true)) }
-        compose.onNodeWithText("다운로드 완료 · 설치").performClick()
+        compose.onNodeWithText("설치").performClick()
         assertEquals(1, installs)
         assertEquals(1, checks)
     }

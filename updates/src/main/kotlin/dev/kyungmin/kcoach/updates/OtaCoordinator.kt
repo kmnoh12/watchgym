@@ -54,9 +54,15 @@ class OtaCoordinator private constructor(private val context: Context, val confi
     fun ui(): OtaUi {
         if (store.local() == null) return OtaUi(if (config.role == OtaRole.WATCH) "업데이트는 폰 앱에서 확인해 주세요" else "폰·워치 업데이트를 확인할 수 있어요", false, false)
         val peerExpected = config.role == OtaRole.PHONE && store.command() != null
-        val summary = OtaPresentation.summarize(store.local(), store.peer(), peerExpected, store.waitingForPeer())
-        return summary.copy(card = OtaPresentation.card(store.local(), store.peer(), peerExpected, store.waitingForPeer(),
-            store.stage(), store.installProgress()))
+        val command = store.command()
+        val awaitingPeer = store.waitingForPeer() || (command?.operation == OtaOperation.INSTALL &&
+            (store.peer()?.commandSequence ?: 0L) < command.sequence)
+        val summary = OtaPresentation.summarize(store.local(), store.peer(), peerExpected, awaitingPeer)
+        val card = OtaPresentation.card(store.local(), store.peer(), peerExpected, awaitingPeer,
+            store.stage(), store.installProgress())
+        val installing = store.stage() != OtaStage.NONE || store.local()?.phase == OtaPhase.INSTALLING ||
+            store.peer()?.phase == OtaPhase.INSTALLING
+        return summary.copy(busy = summary.busy || installing, readyToInstall = summary.readyToInstall && !installing, card = card)
     }
     fun observe(observer: (OtaUi) -> Unit): () -> Unit {
         synchronized(observers) { observers.add(observer) }
@@ -87,7 +93,7 @@ class OtaCoordinator private constructor(private val context: Context, val confi
         val peer = store.peer()
         val selfReady = store.local()?.phase in setOf(OtaPhase.READY, OtaPhase.USER_ACTION_REQUIRED)
         if (peer?.phase in setOf(OtaPhase.READY, OtaPhase.USER_ACTION_REQUIRED)) {
-            val old = store.command() ?: return "업데이트를 먼저 확인해 주세요"
+            val old = store.command() ?: return OtaMessages.CHECK_FIRST
             val command = OtaCommand(old.id, store.instance(), store.nextSequence(), OtaOperation.INSTALL,
                 peer!!.instance, peer.targetCode, peer.sha256)
             store.saveCommand(command); store.waitForPeer(selfReady)
@@ -97,7 +103,7 @@ class OtaCoordinator private constructor(private val context: Context, val confi
             return "워치 설치 요청을 보관했어요. 워치의 설치 확인을 진행해 주세요"
         }
         if (selfReady) { store.setStage(OtaStage.COMMIT); openInstaller(); emit(); return "폰 설치를 시작해요" }
-        return "설치할 새 버전이 없어요"
+        return OtaMessages.NOTHING_TO_INSTALL
     }
     fun receive(path: String, text: String, node: String) {
         if (path == OtaDataLayer.COMMAND_PATH && config.role == OtaRole.WATCH) {
@@ -136,7 +142,10 @@ class OtaCoordinator private constructor(private val context: Context, val confi
                 main.removeCallbacks(peerTimeout)
                 store.waitForPeer(false); store.setStage(OtaStage.COMMIT); main.post { openInstaller() }
             }
-            if (store.waitingForPeer() && command?.sequence == state.commandSequence && state.phase == OtaPhase.FAILED) store.waitForPeer(false)
+            if (store.waitingForPeer() && command?.sequence == state.commandSequence && state.phase == OtaPhase.FAILED) {
+                main.removeCallbacks(peerTimeout)
+                store.waitForPeer(false); store.setStage(OtaStage.NONE)
+            }
             emit()
         }
     }
@@ -155,6 +164,7 @@ class OtaCoordinator private constructor(private val context: Context, val confi
         if (local != null) {
             val (code, _) = installed()
             if (local.targetCode > 0 && code >= local.targetCode && local.phase in setOf(OtaPhase.READY, OtaPhase.USER_ACTION_REQUIRED, OtaPhase.INSTALLING)) {
+                afterReplaced()
                 change(local.id) { it.copy(phase = OtaPhase.INSTALLED, installedCode = code, message = "실제 설치 버전 확인") }
                 store.waitForPeer(false)
             }
@@ -190,8 +200,8 @@ class OtaCoordinator private constructor(private val context: Context, val confi
             try {
                 if (store.stage() == OtaStage.NONE) store.setStage(OtaStage.COMMIT)
                 change(state.id) { it.copy(phase = OtaPhase.INSTALLING, message = "운영체제 설치 확인 대기") }
+                store.setStage(OtaStage.RUN)
                 OtaInstaller.commit(context, store, state)
-                if (store.stage() != OtaStage.OS) store.setStage(OtaStage.RUN)
                 emit()
             } catch (error: Throwable) {
                 store.setSessionId(-1); store.setStage(OtaStage.NONE)

@@ -478,6 +478,8 @@ class MainActivity : ComponentActivity() {
     private val calibrationButtonOverride = mutableStateOf<CalibrationButtonUi?>(null)
     private var calibrationSaveTimeoutTask: Runnable? = null
 
+    /** Set when this start follows an update; shown once at the top of the menu, then cleared. */
+    private var pendingUpdateNotice: dev.kyungmin.kcoach.updates.OtaNotice? = null
     private var returnFromLibrary: (() -> Unit)? = null
     private var returnFromExerciseInfo: (() -> Unit)? = null
     private var returnFromExerciseRecord: (() -> Unit)? = null
@@ -485,11 +487,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val createdAtMs = android.os.SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
+        // Give the first start after an update a longer icon splash, then show the completion notice in the menu.
+        // OEM update overlays have their own timing; this does not guarantee that they expose our splash.
+        val startupUpdates = dev.kyungmin.kcoach.updates.OtaCoordinator.get(this)
+        startupUpdates.recover()
+        pendingUpdateNotice = startupUpdates.store.let { store ->
+            store.notice()?.takeIf { System.currentTimeMillis() - it.atMs < UPDATE_NOTICE_MAX_AGE_MS }.also { if (it == null) store.clearNotice() }
+        }
+        val splashMinMs = if (pendingUpdateNotice != null) SPLASH_AFTER_UPDATE_MS else SPLASH_MIN_MS
         // Cold start only: keep the system splash (icon on the app background) up for a beat so the
         // home screen never just pops in; the listener does not fire on a resume.
         if (android.os.Build.VERSION.SDK_INT >= 31) {
             splashScreen.setOnExitAnimationListener { splash ->
-                val wait = (SPLASH_MIN_MS - (android.os.SystemClock.elapsedRealtime() - createdAtMs)).coerceAtLeast(0L)
+                val wait = (splashMinMs - (android.os.SystemClock.elapsedRealtime() - createdAtMs)).coerceAtLeast(0L)
                 splash.postDelayed({ splash.remove() }, wait)
             }
         }
@@ -531,8 +541,9 @@ class MainActivity : ComponentActivity() {
         val resultShown = requestedResultShown || restoredResult != null
         selectedCalibrationExerciseId = restorationState?.getString(STATE_CALIBRATION_EXERCISE)
             ?: selectedCalibrationExerciseId
-        val restoredTab = restorationState?.getString(STATE_ROOT_TAB)
-            ?.let { saved -> RootTab.values().firstOrNull { it.name == saved } }
+        val restoredTab = if (pendingUpdateNotice != null && activeWorkout == null) RootTab.MENU else
+            restorationState?.getString(STATE_ROOT_TAB)
+                ?.let { saved -> RootTab.values().firstOrNull { it.name == saved } }
         if (!resultShown && restoredTab != null) {
             when (restoredTab) {
                 RootTab.HOME -> showHome()
@@ -1266,17 +1277,19 @@ class MainActivity : ComponentActivity() {
             checkUpdate = { report ->
                 otaCoordinator.checkBoth()
                 val state = otaCoordinator.ui()
-                report(UpdateUi(state.message, state.readyToInstall, state.busy))
+                report(UpdateUi(state.message, state.readyToInstall, state.busy, state.card))
             },
             install = { otaCoordinator.installBoth(this) },
             openSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
-            observeUpdate = { report -> otaCoordinator.observe { state -> report(UpdateUi(state.message, state.readyToInstall, state.busy)) } },
+            observeUpdate = { report -> otaCoordinator.observe { state -> report(UpdateUi(state.message, state.readyToInstall, state.busy, state.card)) } },
         )
         showScaffold(ComposeView(this).apply {
             setContent {
                 val wearing = if (activeWorkout != null) WorkoutWearingStore(this@MainActivity).selection(activeWorkout!!.sessionId).getOrNull()
                     else defaultWorkoutWearing
-                MenuScreen(BuildConfig.VERSION_NAME, actions, wearing)
+                MenuScreen(BuildConfig.VERSION_NAME, actions, wearing, pendingUpdateNotice) {
+                    otaCoordinator.store.clearNotice(); pendingUpdateNotice = null
+                }
             }
         }, null, RootTab.MENU)
     }
@@ -3145,6 +3158,8 @@ class MainActivity : ComponentActivity() {
         private const val EVENT_TAG = "KCoachEvent"
         private const val RECORD_BANNER_MODEL_MS = 6_000L
         private const val SPLASH_MIN_MS = 300L
+        private const val SPLASH_AFTER_UPDATE_MS = 1_200L
+        private const val UPDATE_NOTICE_MAX_AGE_MS = 24 * 60 * 60 * 1_000L
         private const val STATE_VISIBLE_RESULT = "visibleFinishedWorkoutResult"
         private const val STATE_ROOT_TAB = "visibleRootTab"
         private const val STATE_CALIBRATION_EXERCISE = "selectedCalibrationExercise"

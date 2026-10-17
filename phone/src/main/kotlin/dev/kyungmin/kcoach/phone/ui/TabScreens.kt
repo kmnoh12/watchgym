@@ -1,6 +1,12 @@
 package dev.kyungmin.kcoach.phone.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -41,9 +47,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kyungmin.kcoach.phone.WorkoutRecord
+import dev.kyungmin.kcoach.updates.OtaAction
+import dev.kyungmin.kcoach.updates.OtaCard
+import dev.kyungmin.kcoach.updates.OtaMessages
+import dev.kyungmin.kcoach.updates.OtaNotice
+import dev.kyungmin.kcoach.updates.OtaRow
+import dev.kyungmin.kcoach.updates.OtaRowKind
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -281,7 +294,15 @@ fun StatsScreen(ui: StatsUi) {
     }
 }
 
-class UpdateUi(val message: String, val readyToInstall: Boolean, val busy: Boolean = false)
+class UpdateUi(val message: String, val readyToInstall: Boolean, val busy: Boolean = false, val card: OtaCard? = null) {
+    /** The card to draw; a plain message (before the first check, or from older callers) becomes a card of the same shape. */
+    fun asCard(): OtaCard = card ?: OtaCard(
+        headline = message,
+        phone = OtaRow("폰", if (busy) "확인 중" else "확인 전", if (busy) OtaRowKind.WORKING else OtaRowKind.IDLE),
+        watch = OtaRow("워치", if (busy) "확인 중" else "확인 전", if (busy) OtaRowKind.WORKING else OtaRowKind.IDLE),
+        action = if (busy) OtaAction.WORKING else if (readyToInstall) OtaAction.INSTALL else OtaAction.CHECK,
+        actionLabel = if (busy) "확인 중" else if (readyToInstall) "설치" else "업데이트 확인")
+}
 
 class MenuActions(
     val checkUpdate: ((UpdateUi) -> Unit) -> Unit,
@@ -291,14 +312,16 @@ class MenuActions(
 )
 
 @Composable
-fun MenuScreen(version: String, actions: MenuActions, wearing: dev.kyungmin.kcoach.phone.WorkoutWearingSelection? = null) {
-    var state by remember { mutableStateOf(UpdateUi("업데이트를 확인할 수 있어요", false)) }
+fun MenuScreen(version: String, actions: MenuActions, wearing: dev.kyungmin.kcoach.phone.WorkoutWearingSelection? = null, notice: OtaNotice? = null,
+    onNoticeShown: () -> Unit = {}) {
+    var state by remember { mutableStateOf(UpdateUi("업데이트를 확인해 보세요", false)) }
     DisposableEffect(actions.observeUpdate) {
         val unsubscribe = actions.observeUpdate?.invoke { state = it }
         onDispose { unsubscribe?.invoke() }
     }
     TabPage("메뉴", "", KIcon.Settings, actions.openSettings) {
         Spacer(Modifier.height(20.dp))
+        UpdatedBanner(notice, onNoticeShown)
         MenuTipBox()
         Spacer(Modifier.height(28.dp))
         SectionCard("기기", listOf(
@@ -306,35 +329,133 @@ fun MenuScreen(version: String, actions: MenuActions, wearing: dev.kyungmin.kcoa
             "확인한 화면 방향" to when (wearing?.placement) { "OUTSIDE" -> "손등 쪽"; "INSIDE" -> "손바닥 쪽"; else -> "미확인" }))
         Spacer(Modifier.height(28.dp))
         SectionCard("앱", listOf("현재 버전" to version))
-        Spacer(Modifier.height(24.dp))
-        Text(state.message, color = KColors.Muted, fontSize = 14.sp)
-        Spacer(Modifier.height(10.dp))
-        MenuButton(if (state.busy) "업데이트 진행 중…" else if (state.readyToInstall) "다운로드 완료 · 설치" else "업데이트 확인") {
-            if (state.busy) return@MenuButton
-            if (state.readyToInstall) {
-                actions.install()?.let { state = UpdateUi(it, true) }
-            } else {
-                state = UpdateUi("최신 버전 확인 중…", false, busy = true)
-                actions.checkUpdate { result ->
-                    state = result
+        Spacer(Modifier.height(28.dp))
+        val card = state.asCard()
+        UpdateCard(card) {
+            when (card.action) {
+                OtaAction.WORKING -> Unit
+                OtaAction.INSTALL -> {
+                    // The button answers at once; the coordinator's own states replace this a moment later.
+                    state = UpdateUi(card.headline, true, true, card.copy(headline = "업데이트하는 중", action = OtaAction.WORKING, actionLabel = "설치 중"))
+                    val refusal = actions.install()
+                    if (refusal == OtaMessages.NOTHING_TO_INSTALL || refusal == OtaMessages.CHECK_FIRST)
+                        state = UpdateUi(refusal, false, false, card.copy(headline = refusal, action = OtaAction.CHECK, actionLabel = "업데이트 확인"))
+                }
+                else -> {
+                    state = UpdateUi("업데이트 확인 중", false, busy = true)
+                    actions.checkUpdate { result -> state = result }
                 }
             }
         }
     }
 }
 
+/** Shown once, at the top of the menu, the first time the app opens after it was replaced by an update. */
 @Composable
-private fun MenuButton(text: String, filled: Boolean = true, onClick: () -> Unit) {
+private fun UpdatedBanner(notice: OtaNotice?, onShown: () -> Unit) {
+    var visible by remember { mutableStateOf(notice != null) }
+    LaunchedEffect(notice) {
+        if (notice == null) return@LaunchedEffect
+        visible = true
+        kotlinx.coroutines.delay(3_800)
+        visible = false
+        kotlinx.coroutines.delay(400)
+        onShown()
+    }
+    AnimatedVisibility(visible && notice != null, enter = fadeIn(tween(260)) + expandVertically(tween(260)), exit = fadeOut(tween(260)) + shrinkVertically(tween(260))) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clip(KShape.Control).background(KColors.AccentWash).padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                KIcon(KIcon.Check, KColors.Accent, Modifier.padding(end = 12.dp), 22.dp)
+                Column {
+                    Text("${notice?.to.orEmpty()}로 업데이트했어요", color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("이전 ${notice?.from.orEmpty()}", color = KColors.Muted, fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+/** Two fixed rows (phone, watch) and one button whose label and colour change in place, so nothing moves while updating. */
+@Composable
+private fun UpdateCard(card: OtaCard, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Text("업데이트", color = KColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+        HairlineRule()
+        UpdateRow(card.phone)
+        HairlineRule()
+        UpdateRow(card.watch ?: OtaRow("워치", "연결 안 됨", OtaRowKind.IDLE))
+        HairlineRule()
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(22.dp)) {
+            Crossfade(card.headline, animationSpec = tween(200), label = "updateHeadline") {
+                Text(it, color = KColors.Muted, fontSize = 14.sp, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        UpdateButton(card.action, card.actionLabel, onClick)
+    }
+}
+
+@Composable
+private fun UpdateRow(row: OtaRow) {
+    val bar by animateFloatAsState(row.progress ?: 0f, tween(300), label = "updateProgress")
+    val color by animateColorAsState(
+        when (row.kind) {
+            OtaRowKind.READY -> KColors.Accent
+            OtaRowKind.FAIL -> KColors.Red
+            OtaRowKind.IDLE -> KColors.Muted
+            else -> KColors.White
+        }, tween(240), label = "updateRowColor")
+    Column(Modifier.fillMaxWidth().height(60.dp), verticalArrangement = Arrangement.Center) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(row.device, color = KColors.Soft, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Crossfade(row.text, animationSpec = tween(200), label = "updateRowText") {
+                Text(it, color = color, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            }
+        }
+        // The bar's slot is always there, so a row never gets taller when a progress bar appears.
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (row.progress != null) KColors.Hairline else Color.Transparent)) {
+            if (row.progress != null) Box(Modifier.fillMaxWidth(bar).height(3.dp).background(KColors.Accent))
+        }
+    }
+}
+
+@Composable
+private fun UpdateButton(action: OtaAction, label: String, onClick: () -> Unit) {
+    val working = action == OtaAction.WORKING
+    val fill by animateColorAsState(when (action) {
+        OtaAction.INSTALL -> KColors.Accent
+        OtaAction.WORKING -> KColors.SurfaceRaised
+        else -> Color.Transparent
+    }, tween(240), label = "updateButtonFill")
+    val outlined = action == OtaAction.CHECK || action == OtaAction.RETRY
     Box(
         Modifier
+            .testTag("updateAction")
             .fillMaxWidth()
             .height(58.dp)
             .clip(KShape.Control)
-            .then(if (filled) Modifier.background(KColors.Accent) else Modifier.border(0.5.dp, Color(0xFF3F3D39), KShape.Control))
-            .pressable(onClick),
+            .background(fill)
+            .then(if (outlined) Modifier.border(0.5.dp, Color(0xFF3F3D39), KShape.Control) else Modifier)
+            .then(if (working) Modifier else Modifier.pressable(onClick)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, color = if (filled) KColors.OnAccent else KColors.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AnimatedVisibility(working) {
+                Row {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = KColors.Accent, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
+            }
+            Crossfade(label, animationSpec = tween(200), label = "updateButtonLabel") {
+                Text(it, color = if (action == OtaAction.INSTALL) KColors.OnAccent else KColors.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 

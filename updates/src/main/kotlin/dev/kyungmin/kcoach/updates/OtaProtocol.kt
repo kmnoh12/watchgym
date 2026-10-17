@@ -2,6 +2,12 @@ package dev.kyungmin.kcoach.updates
 
 import org.json.JSONObject
 
+/** The two answers of "install" that mean nothing was started. */
+object OtaMessages {
+    const val CHECK_FIRST = "업데이트를 먼저 확인해 주세요"
+    const val NOTHING_TO_INSTALL = "설치할 새 버전이 없어요"
+}
+
 enum class OtaRole { PHONE, WATCH }
 enum class OtaPhase { QUEUED, CHECKING, DOWNLOADING, READY, UP_TO_DATE, USER_ACTION_REQUIRED, INSTALLING, INSTALLED, FAILED }
 enum class OtaOperation { CHECK, INSTALL, STATUS }
@@ -94,27 +100,27 @@ object OtaPresentation {
             else -> phaseRow("폰", local)
         }
         val watch = if (!peerExpected) null else when {
-            waitingForPeer && stage == OtaStage.PEER -> OtaRow("워치", "설치 요청 중", OtaRowKind.WORKING)
+            waitingForPeer -> OtaRow("워치", "설치 요청 중", OtaRowKind.WORKING)
             peer?.phase == OtaPhase.USER_ACTION_REQUIRED -> OtaRow("워치", "워치에서 설치 확인", OtaRowKind.WORKING)
             else -> phaseRow("워치", peer)
         }
         val rows = listOfNotNull(phone, watch)
         val working = rows.any { it.kind == OtaRowKind.WORKING }
-        val installing = stage != OtaStage.NONE || rows.any { it.kind == OtaRowKind.WORKING && it.text.startsWith("설치") || it.text.startsWith("워치에서") }
+        val installing = waitingForPeer || stage != OtaStage.NONE || rows.any { it.kind == OtaRowKind.WORKING && it.text.startsWith("설치") || it.text.startsWith("워치에서") }
         val ready = rows.any { it.kind == OtaRowKind.READY }
         val failed = rows.any { it.kind == OtaRowKind.FAIL }
         val target = (local?.targetName?.takeIf { it.isNotBlank() } ?: peer?.targetName).orEmpty()
         val (action, label) = when {
             working && installing -> OtaAction.WORKING to "설치 중"
-            working -> OtaAction.WORKING to "확인 중"
             ready -> OtaAction.INSTALL to "설치"
+            working -> OtaAction.WORKING to "확인 중"
             failed -> OtaAction.RETRY to "다시 시도"
             else -> OtaAction.CHECK to "업데이트 확인"
         }
         val headline = when {
             working && installing -> "업데이트하는 중"
-            working -> "업데이트 확인 중"
             ready -> if (target.isNotEmpty()) "$target 업데이트가 준비됐어요" else "업데이트가 준비됐어요"
+            working -> "업데이트 확인 중"
             failed -> "업데이트하지 못했어요"
             rows.all { it.kind == OtaRowKind.DONE } && rows.any { it.text.startsWith("설치됨") } -> "업데이트를 마쳤어요"
             rows.all { it.kind == OtaRowKind.DONE } -> "최신 버전이에요"
