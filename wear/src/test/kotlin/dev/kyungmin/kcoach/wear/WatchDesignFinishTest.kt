@@ -61,11 +61,11 @@ class WatchDesignFinishTest {
         val aux = AuxPageView(app).apply { bind(112, "32:10", 9, "02:05") }
         render(aux, "aux")
         assertEquals(2, aux.zoneBar.zone)
-        assertEquals("ZONE 2", aux.zoneBar.contentDescription.toString())
+        assertEquals("Zone 2", aux.zoneBar.contentDescription.toString())
         assertEquals("32:10", aux.elapsed.text.toString()); assertEquals("9", aux.sets.text.toString())
         activity.pause().stop().destroy()
     }
-    @Test fun changingZonesKeepsTheActiveBarCentredAndSettlesAfterRapidUpdates() {
+    @Test fun bezelPointerTracksTheActualRateAndSettlesAfterRapidUpdates() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup()
         val aux = AuxPageView(activity.get())
         aux.bind(112, "32:10", 9, "02:05")
@@ -77,21 +77,38 @@ class WatchDesignFinishTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
         render(aux, "aux-zone-5")
         assertEquals(5, aux.zoneBar.zone)
-        assertEquals("ZONE 5", aux.zoneBar.contentDescription.toString())
-        assertEquals(WatchWorkoutFace.zoneColor(180), aux.heartRate.currentTextColor)
+        assertEquals("Zone 5", aux.zoneBar.contentDescription.toString())
+        assertEquals(WatchWorkoutFace.BONE, aux.heartRate.currentTextColor)
+        assertEquals(WatchWorkoutFace.zoneColor(180), aux.zoneLabel.currentTextColor)
         for (heart in listOf(100, 120, 140, 160, 180)) {
             aux.bind(heart, "32:10", 9, "02:05")
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
             val image = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
             aux.draw(Canvas(image))
-            // The centre column crosses the filled current bar even at either end of the scale.
-            assertEquals(WatchWorkoutFace.zoneColor(heart), image.getPixel(216, 199))
+            val angle = Math.PI * (1.0 - WatchWorkoutFace.zoneGaugeFraction(heart))
+            val x = (216 + 194 * kotlin.math.cos(angle)).toInt()
+            val y = (216 + 194 * kotlin.math.sin(angle)).toInt()
+            assertEquals(WatchWorkoutFace.BONE, image.getPixel(x, y))
             image.recycle()
         }
+        // A change within Zone 2 must move the marker, too.
+        aux.bind(112, "32:10", 9, "02:05")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        val before = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
+        aux.zoneBar.draw(Canvas(before))
+        aux.bind(125, "32:10", 9, "02:05")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        val after = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
+        aux.zoneBar.draw(Canvas(after))
+        assertEquals(2, aux.zoneBar.zone)
+        assertFalse(before.sameAs(after))
+        before.recycle(); after.recycle()
         aux.bind(0, "32:10", 9, "02:05")
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
         assertEquals(0, aux.zoneBar.zone)
         assertEquals("—", aux.heartRate.text.toString())
+        assertEquals("", aux.zoneLabel.text.toString())
+        render(aux, "aux-no-heart")
         activity.pause().stop().destroy()
     }
 

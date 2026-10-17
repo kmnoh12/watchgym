@@ -311,6 +311,9 @@ internal class WatchWorkoutFace(context: Context) : FrameLayout(context) {
             heartRate * 100 < ASSUMED_MAX_HEART_RATE * 90 -> 4
             else -> 5
         }
+        /** Same 50–100% scale as the five existing bands; not a measured/personalised maximum. */
+        fun zoneGaugeFraction(heartRate: Int): Float =
+            ((heartRate.toFloat() / ASSUMED_MAX_HEART_RATE - .5f) / .5f).coerceIn(0f, 1f)
         fun zoneColor(heartRate: Int): Int = ZONES[(zone(heartRate).coerceAtLeast(1)) - 1]
     }
 }

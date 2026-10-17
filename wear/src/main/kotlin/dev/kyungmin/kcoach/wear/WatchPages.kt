@@ -204,67 +204,70 @@ internal class JogBar(context: Context) : View(context) {
     }
 }
 
-/** Current zone stays on the watch centreline; surrounding ticks keep their zone order. */
+/** Lower half of the bezel: five zone bands and a pointer driven by the actual heart rate. */
 internal class ZoneBar(context: Context) : View(context) {
     private val emphasis = FloatArray(5)
+    private var fraction = 0f
+    private var markerOpacity = 0f
     private var transition: ValueAnimator? = null
+    private var lastHeart = 0
     var zone = 0
-        set(value) {
-            val next = value.coerceIn(0, 5)
-            if (field == next) return
-            field = next
-            contentDescription = if (next == 0) "심박 구간 정보 없음" else "ZONE $next"
-            transition?.cancel()
-            val start = emphasis.copyOf()
-            val target = FloatArray(5) { if (it + 1 == next) 1f else 0f }
-            if (!isAttachedToWindow || width == 0 || !ValueAnimator.areAnimatorsEnabled()) {
-                target.copyInto(emphasis); invalidate(); return
-            }
-            transition = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 280L
-                interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
-                addUpdateListener {
-                    val f = it.animatedValue as Float
-                    emphasis.indices.forEach { i -> emphasis[i] = start[i] + (target[i] - start[i]) * f }
-                    invalidate()
-                }
-                start()
-            }
+        private set
+
+    fun bind(heart: Int) {
+        if (lastHeart == heart) return
+        lastHeart = heart
+        zone = WatchWorkoutFace.zone(heart)
+        contentDescription = if (zone == 0) "심박 구간 정보 없음" else "Zone $zone"
+        transition?.cancel()
+        val start = emphasis.copyOf()
+        val from = fraction
+        val fromOpacity = markerOpacity
+        val target = FloatArray(5) { if (it + 1 == zone) 1f else 0f }
+        val to = WatchWorkoutFace.zoneGaugeFraction(heart)
+        val opacity = if (zone == 0) 0f else 1f
+        fun apply(f: Float) {
+            emphasis.indices.forEach { i -> emphasis[i] = start[i] + (target[i] - start[i]) * f }
+            fraction = from + (to - from) * f
+            markerOpacity = fromOpacity + (opacity - fromOpacity) * f
+            invalidate()
         }
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.create("sans-serif", Typeface.BOLD)
-        textAlign = Paint.Align.CENTER
+        if (!isAttachedToWindow || width == 0 || !ValueAnimator.areAnimatorsEnabled()) { apply(1f); return }
+        transition = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 320L
+            interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
+            addUpdateListener { apply(it.animatedValue as Float) }
+            start()
+        }
     }
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val k = width / 400f
-        val widths = FloatArray(5) { 28f + 84f * emphasis[it] }
-        val centres = FloatArray(5)
-        var x = 0f
-        for (i in centres.indices) { centres[i] = x + widths[i] / 2f; x += widths[i] + 8f }
-        val total = emphasis.sum()
-        val anchor = if (total > 0f) centres.indices.sumOf { (centres[it] * emphasis[it]).toDouble() }.toFloat() / total else (x - 8f) / 2f
-        val offset = 200f - anchor
-        for (i in centres.indices) {
-            val active = emphasis[i]
-            val cx = (offset + centres[i]) * k
-            val h = (12f + 28f * active) * k
+        val k = minOf(width, height) / 432f
+        val ox = (width - 432f * k) / 2f
+        val oy = (height - 432f * k) / 2f
+        canvas.save(); canvas.translate(ox, oy); canvas.scale(k, k)
+        val oval = RectF(22f, 22f, 410f, 410f)
+        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND; paint.strokeWidth = 5f
+        for (i in 0 until 5) {
             paint.color = WatchWorkoutFace.zoneColor(ZONE_SAMPLE_BPM[i])
-            paint.alpha = (72 + 183 * active).roundToInt()
-            canvas.drawRoundRect(RectF(cx - widths[i] * k / 2f, (height - h) / 2f,
-                cx + widths[i] * k / 2f, (height + h) / 2f), 4f * k, 4f * k, paint)
-            if (active > 0f) {
-                label.color = Color.rgb(6, 21, 34); label.alpha = (255 * active).roundToInt()
-                label.textSize = 20f * k
-                val baseline = height / 2f - (label.fontMetrics.ascent + label.fontMetrics.descent) / 2f
-                canvas.drawText("ZONE ${i + 1}", cx, baseline, label)
-            }
+            paint.alpha = (64 + 191 * emphasis[i]).roundToInt()
+            canvas.drawArc(oval, 178.5f - i * 36f, -33f, false, paint)
         }
+        if (markerOpacity > 0f) {
+            val angle = Math.toRadians((180f - 180f * fraction).toDouble())
+            val x = 216f + 194f * kotlin.math.cos(angle).toFloat()
+            val y = 216f + 194f * kotlin.math.sin(angle).toFloat()
+            paint.style = Paint.Style.FILL
+            paint.color = Color.BLACK; paint.alpha = (255 * markerOpacity).roundToInt()
+            canvas.drawCircle(x, y, 10f, paint)
+            paint.color = WatchWorkoutFace.BONE; paint.alpha = (255 * markerOpacity).roundToInt()
+            canvas.drawCircle(x, y, 7f, paint)
+        }
+        canvas.restore()
     }
     override fun onDetachedFromWindow() {
-        transition?.cancel(); transition = null
-        emphasis.indices.forEach { emphasis[it] = if (it + 1 == zone) 1f else 0f }
+        transition?.end(); transition = null
         super.onDetachedFromWindow()
     }
     private companion object { val ZONE_SAMPLE_BPM = intArrayOf(100, 120, 140, 160, 180) }
@@ -403,19 +406,22 @@ internal class EditPageView(context: Context) : Grid432(context) {
 
 /** The page below the counter while measuring: heart rate with its zone, workout time and finished sets. */
 internal class AuxPageView(context: Context) : Grid432(context) {
+    val zoneBar = place(ZoneBar(context), 0, 0, 432, 432)
     val clock = placeText(text(13f, WatchWorkoutFace.WHITE, medium = true), 116, 316, 63.9f)
-    /** The rate and its small "bpm", centred together on one baseline as in the design. */
-    val heartRate = placeText(text(56f, WatchWorkoutFace.BONE, medium = true).apply { letterSpacing = -3f / 112f }, 40, 392, 166.2f, fit = true)
-    val zoneBar = place(ZoneBar(context), 16, 196, 416, 236)
-    /** Workout time and finished sets, two columns 48 units apart. */
-    private val pair = StatRow(this, 40f, 18f, 290f, 8f, 23.25f, 0f, 300f)
-    val elapsed get() = pair.values[0]
-    val sets get() = pair.values[1]
+    val elapsed = placeText(text(18f, WatchWorkoutFace.BONE, medium = true), 82, 204, 140f)
+    val sets = placeText(text(18f, WatchWorkoutFace.BONE, medium = true), 228, 350, 140f)
+    private val elapsedLabel = placeText(text(9f, WatchWorkoutFace.MUTED), 82, 204, 101f).apply { text = "운동 시간" }
+    private val setsLabel = placeText(text(9f, WatchWorkoutFace.MUTED), 228, 350, 101f).apply { text = "완료 세트" }
+    private val verticalRule = place(View(context).apply { setBackgroundColor(WatchWorkoutFace.HAIRLINE) }, 215, 88, 217, 148)
+    private val horizontalRule = place(View(context).apply { setBackgroundColor(WatchWorkoutFace.HAIRLINE) }, 86, 165, 346, 167)
+    val heartRate = placeText(text(48f, WatchWorkoutFace.BONE, medium = true).apply { letterSpacing = -3f / 96f }, 142, 338, 280f, fit = true)
+    private val heart = place(HeartView(context), 91, 226, 133, 268)
+    val zoneLabel = placeText(text(12f, WatchWorkoutFace.MUTED, medium = true), 116, 316, 345f)
     val chevronUp = place(ChevronView(context, true), 199, 14, 233, 31)
-    private var heartColorTransition: ValueAnimator? = null
+    private var colorTransition: ValueAnimator? = null
     init { setBackgroundColor(Color.BLACK) }
     override fun onDetachedFromWindow() {
-        heartColorTransition?.end(); heartColorTransition = null
+        colorTransition?.end(); colorTransition = null
         super.onDetachedFromWindow()
     }
 
@@ -423,19 +429,23 @@ internal class AuxPageView(context: Context) : Grid432(context) {
         clock.text = clockText
         val zone = WatchWorkoutFace.zone(heart)
         val color = if (zone == 0) WatchWorkoutFace.MUTED else WatchWorkoutFace.zoneColor(heart)
-        heartRate.text = if (heart > 0) Moment.valueWithUnit(heart.toString(), "bpm", 22f / 112f, WatchWorkoutFace.MUTED, gapEm = 10f / 112f) else "—"
+        heartRate.text = if (heart > 0) heart.toString() else "—"
+        heartRate.contentDescription = if (heart > 0) "$heart bpm" else "심박 정보 없음"
+        heartRate.setTextColor(if (heart > 0) WatchWorkoutFace.BONE else WatchWorkoutFace.MUTED)
+        this.heart.show(heart)
         if (zoneBar.zone != zone) {
-            heartColorTransition?.cancel()
+            colorTransition?.cancel()
             if (isAttachedToWindow && ValueAnimator.areAnimatorsEnabled()) {
-                heartColorTransition = ValueAnimator.ofArgb(heartRate.currentTextColor, color).apply {
-                    duration = 280L
+                colorTransition = ValueAnimator.ofArgb(zoneLabel.currentTextColor, color).apply {
+                    duration = 320L
                     interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
-                    addUpdateListener { heartRate.setTextColor(it.animatedValue as Int) }
+                    addUpdateListener { zoneLabel.setTextColor(it.animatedValue as Int) }
                     start()
                 }
-            } else heartRate.setTextColor(color)
+            } else zoneLabel.setTextColor(color)
         }
-        zoneBar.zone = zone
-        pair.bind(listOf(elapsedText to "운동 시간", finishedSets.toString() to "완료 세트"))
+        zoneLabel.text = if (zone == 0) "" else "Zone $zone"
+        zoneBar.bind(heart)
+        elapsed.text = elapsedText; sets.text = finishedSets.toString()
     }
 }

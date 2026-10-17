@@ -147,20 +147,8 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
 .anim.paused .an-chd{opacity:0}
 @media(prefers-reduced-motion:reduce){.anim *{transition:none!important}}
 
-/* 5 · 보조 */
-.s5 .hr{top:calc(var(--u)*72);display:flex;justify-content:center;align-items:baseline;gap:calc(var(--u)*10)}
-.s5 .hr .num{font-size:calc(var(--u)*112);color:var(--z2);letter-spacing:calc(var(--u)*-3)}
-.s5 .hr .u{font-size:calc(var(--u)*22);color:var(--muted)}
-.zone{position:absolute;left:calc(var(--u)*16);width:calc(var(--u)*400);top:calc(var(--u)*196);height:calc(var(--u)*40);overflow:hidden}
-.zone-track{position:absolute;left:50%;height:100%;display:flex;align-items:center;gap:calc(var(--u)*8);transform:translateX(calc(var(--u)*-92));transition:transform .28s cubic-bezier(.2,0,0,1)}
-.zone i{flex:none;width:calc(var(--u)*28);height:calc(var(--u)*12);border-radius:calc(var(--u)*4);opacity:.28;display:flex;align-items:center;justify-content:center;font-style:normal;color:#061522;font:700 calc(var(--u)*20)/1 Roboto,sans-serif;white-space:nowrap;overflow:hidden;transition:width .28s cubic-bezier(.2,0,0,1),height .28s cubic-bezier(.2,0,0,1),opacity .28s cubic-bezier(.2,0,0,1)}
-.zone i.on{width:calc(var(--u)*112);height:calc(var(--u)*40);opacity:1}
-.zone i:nth-child(1){background:var(--z1)}.zone i:nth-child(2){background:var(--z2)}.zone i:nth-child(3){background:var(--z3)}.zone i:nth-child(4){background:var(--z4)}.zone i:nth-child(5){background:var(--z5)}
-@media(prefers-reduced-motion:reduce){.zone-track,.zone i{transition:none}}
-.pair{top:calc(var(--u)*290);display:flex;justify-content:center;gap:calc(var(--u)*48)}
-.pair div{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*8)}
-.pair .v{font-size:calc(var(--u)*40);font-family:Roboto,sans-serif;font-weight:500;line-height:1}
-.pair .k{font-size:calc(var(--u)*18);color:var(--muted);line-height:1}
+/* 5 · 보조: 위 통계, 가운데 심박, 하단 반원 존 게이지 */
+.s5 .aux-face{width:100%;height:100%;font-family:Roboto,"Noto Sans KR",sans-serif}
 
 /* 6 · 세트 메뉴 */
 .s6 .name{top:calc(var(--u)*64);font-size:calc(var(--u)*30)}
@@ -461,17 +449,15 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
 
 <!-- 5 보조 -->
 <div class="item">
-  <div class="watch"><div class="face s5">
-    <div class="abs clock">02:05</div>
-    <div class="abs hr"><span class="num">112</span><span class="u">bpm</span></div>
-    <div class="zone"><div class="zone-track"><i></i><i class="on">ZONE 2</i><i></i><i></i><i></i></div></div>
-    <div class="abs pair">
-      <div><span class="v">32:10</span><span class="k">운동 시간</span></div>
-      <div><span class="v">9</span><span class="k">완료 세트</span></div>
-    </div>
-    <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg>
-  </div></div>
-  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>운동 중에 보지 않아도 되는 정보는 한 화면으로 모았어요. 심박 구간은 다섯 칸이고 현재 존 바만 커져 워치 중앙에 와요. ZONE 글자는 선택된 바 안에 넣고 다른 칸은 작고 흐리게 둬요. 존이 바뀌면 0.28초 동안 위치·크기·강조가 부드럽게 바뀌어요. 심박 숫자는 현재 존 색이에요. 색은 ZONE 1 회청, 2 파랑, 3 초록, 4 주황, 5 빨강이에요. 기기가 주지 않는 값은 채우지 않아요(칼로리는 아직 넣지 않았어요).</span></div>
+  <div class="watch"><div class="face s5"><svg class="aux-face" viewBox="0 0 432 432" role="img" aria-label="운동 시간 32분 10초, 완료 9세트, 심박 112 bpm, Zone 2"><path d="M22.066 221.078A194 194 0 0 0 56.120 325.883" fill="none" stroke="#7C8E9C" opacity="0.251" stroke-width="5" stroke-linecap="round"/><path d="M62.089 334.100A194 194 0 0 0 151.241 398.872" fill="none" stroke="#4DA3FF" opacity="1" stroke-width="5" stroke-linecap="round"/><path d="M160.901 402.011A194 194 0 0 0 271.099 402.011" fill="none" stroke="#4FD18B" opacity="0.251" stroke-width="5" stroke-linecap="round"/><path d="M280.759 398.872A194 194 0 0 0 369.911 334.100" fill="none" stroke="#FFA04D" opacity="0.251" stroke-width="5" stroke-linecap="round"/><path d="M375.880 325.883A194 194 0 0 0 409.934 221.078" fill="none" stroke="#EF4438" opacity="0.251" stroke-width="5" stroke-linecap="round"/><circle cx="63.013" cy="335.294" r="10" fill="#000"/><circle cx="63.013" cy="335.294" r="7" fill="#EDE8DC"/><g text-anchor="middle"><text x="216" y="63.9" font-size="26" font-weight="500" fill="#EDE8DC">02:05</text>
+<g font-size="18" fill="#8F8B82"><text x="143" y="101">운동 시간</text><text x="289" y="101">완료 세트</text></g>
+<g font-size="36" font-weight="500" fill="#EDE8DC"><text x="143" y="140">32:10</text><text x="289" y="140">9</text></g>
+<path d="M216 88V148 M86 166H346" stroke="#1E1D1A" stroke-width="1.5"/>
+<text x="240" y="280" font-size="96" font-weight="500" letter-spacing="-3" fill="#EDE8DC">112</text>
+<text x="216" y="345" font-size="24" font-weight="500" fill="#4DA3FF">Zone 2</text></g>
+<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" transform="translate(91 226) scale(1.75)" fill="#4DA3FF"/>
+<path d="M205 26l11-8 11 8" fill="none" stroke="#A39F98" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div>
+  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>운동 시간과 완료 세트는 위쪽 두 칸에, 큰 심박수와 하트는 가운데에 둬요. 아래쪽 반원은 다섯 존이 이어지는 게이지이고 흰 점이 현재 심박 위치를 가리켜요. Zone 2 표기는 심박수 아래에 둬요. 점 위치와 구간 강조는 0.32초 동안 이어지고, 현재 존 안에서 심박이 바뀌어도 점이 이동해요. 심박을 받지 못하면 숫자는 —로, 점과 존 이름은 숨겨요. 기존 임시 최대 심박 185 기준의 구간 판정을 그대로 쓰며 실제 개인화 기준은 아니에요.</span></div>
 </div>
 
 <!-- 6 세트 편집 -->
