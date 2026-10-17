@@ -151,11 +151,12 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
 .s5 .hr{top:calc(var(--u)*72);display:flex;justify-content:center;align-items:baseline;gap:calc(var(--u)*10)}
 .s5 .hr .num{font-size:calc(var(--u)*112);color:var(--z2);letter-spacing:calc(var(--u)*-3)}
 .s5 .hr .u{font-size:calc(var(--u)*22);color:var(--muted)}
-.zone{position:absolute;left:calc(var(--u)*84);right:calc(var(--u)*84);top:calc(var(--u)*204);height:calc(var(--u)*16);display:flex;gap:calc(var(--u)*5)}
-.zone i{flex:1;border-radius:calc(var(--u)*3);opacity:.28}
-.zone i.on{opacity:1}
+.zone{position:absolute;left:calc(var(--u)*16);width:calc(var(--u)*400);top:calc(var(--u)*196);height:calc(var(--u)*40);overflow:hidden}
+.zone-track{position:absolute;left:50%;height:100%;display:flex;align-items:center;gap:calc(var(--u)*8);transform:translateX(calc(var(--u)*-92));transition:transform .28s cubic-bezier(.2,0,0,1)}
+.zone i{flex:none;width:calc(var(--u)*28);height:calc(var(--u)*12);border-radius:calc(var(--u)*4);opacity:.28;display:flex;align-items:center;justify-content:center;font-style:normal;color:#061522;font:700 calc(var(--u)*20)/1 Roboto,sans-serif;white-space:nowrap;overflow:hidden;transition:width .28s cubic-bezier(.2,0,0,1),height .28s cubic-bezier(.2,0,0,1),opacity .28s cubic-bezier(.2,0,0,1)}
+.zone i.on{width:calc(var(--u)*112);height:calc(var(--u)*40);opacity:1}
 .zone i:nth-child(1){background:var(--z1)}.zone i:nth-child(2){background:var(--z2)}.zone i:nth-child(3){background:var(--z3)}.zone i:nth-child(4){background:var(--z4)}.zone i:nth-child(5){background:var(--z5)}
-.zlab{top:calc(var(--u)*232);font-size:calc(var(--u)*22);color:var(--z2);line-height:1;font-weight:700;letter-spacing:calc(var(--u)*1.5)}
+@media(prefers-reduced-motion:reduce){.zone-track,.zone i{transition:none}}
 .pair{top:calc(var(--u)*290);display:flex;justify-content:center;gap:calc(var(--u)*48)}
 .pair div{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*8)}
 .pair .v{font-size:calc(var(--u)*40);font-family:Roboto,sans-serif;font-weight:500;line-height:1}
@@ -463,15 +464,14 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
   <div class="watch"><div class="face s5">
     <div class="abs clock">02:05</div>
     <div class="abs hr"><span class="num">112</span><span class="u">bpm</span></div>
-    <div class="zone"><i></i><i class="on"></i><i></i><i></i><i></i></div>
-    <div class="abs zlab">ZONE 2</div>
+    <div class="zone"><div class="zone-track"><i></i><i class="on">ZONE 2</i><i></i><i></i><i></i></div></div>
     <div class="abs pair">
       <div><span class="v">32:10</span><span class="k">운동 시간</span></div>
       <div><span class="v">9</span><span class="k">완료 세트</span></div>
     </div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>운동 중에 보지 않아도 되는 정보는 한 화면으로 모았어요. 심박 구간은 다섯 칸이고 현재 칸만 진하게 켜지고 심박 숫자와 ZONE 글자도 그 색이에요. 색은 ZONE 1 회청, 2 파랑, 3 초록, 4 주황, 5 빨강이에요. 기기가 주지 않는 값은 채우지 않아요(칼로리는 아직 넣지 않았어요).</span></div>
+  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>운동 중에 보지 않아도 되는 정보는 한 화면으로 모았어요. 심박 구간은 다섯 칸이고 현재 존 바만 커져 워치 중앙에 와요. ZONE 글자는 선택된 바 안에 넣고 다른 칸은 작고 흐리게 둬요. 존이 바뀌면 0.28초 동안 위치·크기·강조가 부드럽게 바뀌어요. 심박 숫자는 현재 존 색이에요. 색은 ZONE 1 회청, 2 파랑, 3 초록, 4 주황, 5 빨강이에요. 기기가 주지 않는 값은 채우지 않아요(칼로리는 아직 넣지 않았어요).</span></div>
 </div>
 
 <!-- 6 세트 편집 -->

@@ -60,8 +60,39 @@ class WatchDesignFinishTest {
         assertEquals(WatchWorkoutFace.MUTED, editor.segPrevious.currentTextColor)
         val aux = AuxPageView(app).apply { bind(112, "32:10", 9, "02:05") }
         render(aux, "aux")
-        assertEquals("ZONE 2", aux.zoneLabel.text.toString())
+        assertEquals(2, aux.zoneBar.zone)
+        assertEquals("ZONE 2", aux.zoneBar.contentDescription.toString())
         assertEquals("32:10", aux.elapsed.text.toString()); assertEquals("9", aux.sets.text.toString())
         activity.pause().stop().destroy()
     }
+    @Test fun changingZonesKeepsTheActiveBarCentredAndSettlesAfterRapidUpdates() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val aux = AuxPageView(activity.get())
+        aux.bind(112, "32:10", 9, "02:05")
+        activity.get().setContentView(aux)
+        render(aux, "aux-zone-2")
+        aux.bind(140, "32:10", 9, "02:05")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+        aux.bind(180, "32:10", 9, "02:05")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        render(aux, "aux-zone-5")
+        assertEquals(5, aux.zoneBar.zone)
+        assertEquals("ZONE 5", aux.zoneBar.contentDescription.toString())
+        assertEquals(WatchWorkoutFace.zoneColor(180), aux.heartRate.currentTextColor)
+        for (heart in listOf(100, 120, 140, 160, 180)) {
+            aux.bind(heart, "32:10", 9, "02:05")
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            val image = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
+            aux.draw(Canvas(image))
+            // The centre column crosses the filled current bar even at either end of the scale.
+            assertEquals(WatchWorkoutFace.zoneColor(heart), image.getPixel(216, 199))
+            image.recycle()
+        }
+        aux.bind(0, "32:10", 9, "02:05")
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertEquals(0, aux.zoneBar.zone)
+        assertEquals("—", aux.heartRate.text.toString())
+        activity.pause().stop().destroy()
+    }
+
 }
