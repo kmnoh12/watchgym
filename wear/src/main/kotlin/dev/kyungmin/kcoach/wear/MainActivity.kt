@@ -928,7 +928,7 @@ class MainActivity : Activity() {
             val controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(input) }
             controls.addView(LinearLayout(this).apply {
                 listOf("−" to -1, "+" to 1).forEach { (label, delta) ->
-                    addView(this@MainActivity.label(label, 22f, Color.WHITE, true).apply {
+                    addView(this@MainActivity.label(label, 22f, WatchWorkoutFace.BONE, true).apply {
                         gravity = Gravity.CENTER
                         setPadding(12, 8, 12, 8)
                         setOnClickListener { input.setText(((input.text.toString().toIntOrNull() ?: 0) + delta).coerceIn(0, 9_999).toString()) }
@@ -1023,7 +1023,6 @@ class MainActivity : Activity() {
             val measured = progress
             if (measured == null && (total <= 0L || remaining <= 0L)) return
             val fraction = if (measured != null) measured.coerceIn(0f, 1f) else (remaining.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-            val density = resources.displayMetrics.density
             // A real round Wear display is normally square. Some emulator profiles
             // expose a tall canvas, so use the top square display region instead of
             // centering the ring in the entire scrollable-height surface.
@@ -1037,10 +1036,10 @@ class MainActivity : Activity() {
             val roundTop = if (canvasHeight > canvasWidth * 1.15f) 0f else {
                 (canvasHeight - roundDiameter) / 2f
             }
-            paint.strokeWidth = 3.5f * density
-            // The stroke is centered on the arc, so half of it plus a hairline gap keeps the outer
-            // edge of the ring right against the rim of the display instead of floating inside it.
-            val inset = paint.strokeWidth / 2f + 1f * density
+            // The same 432 grid as the reference and moment screens: r=209, stroke=7.
+            val scale = roundDiameter / 432f
+            paint.strokeWidth = 7f * scale
+            val inset = 7f * scale
             val left = (canvasWidth - roundDiameter) / 2f + inset
             val top = roundTop + inset
             val right = (canvasWidth + roundDiameter) / 2f - inset

@@ -37,7 +37,7 @@ internal class WatchWorkoutFace(context: Context) : FrameLayout(context) {
         }
         view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px)
     }
-    private val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(38, 38, 36); strokeWidth = 1.5f }
+    private val divider = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = HAIRLINE; strokeWidth = 1.5f }
     private val medium = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     val clock = label(13f, WHITE, 116, 42, 316, 72)
     val title = label(17f, WHITE, 63, 74, 369, 110, true).apply { maxLines = 1 }
@@ -293,6 +293,11 @@ internal class WatchWorkoutFace(context: Context) : FrameLayout(context) {
         val MUTED = Color.rgb(143, 139, 130)
         val SOFT = Color.rgb(163, 159, 152)
         val CARD = Color.rgb(28, 27, 25)
+        val HAIRLINE = Color.rgb(30, 29, 26)
+        val CONTROL = Color.rgb(52, 50, 45)
+        val LARGE_STEP = Color.rgb(75, 72, 65)
+        val PREVIOUS_SELECTED = Color.rgb(64, 62, 58)
+        val SAGE_WASH = Color.rgb(15, 42, 34)
         val TRACK = Color.rgb(27, 27, 26)
         /** Heart-rate zone colours, zone 1..5. The bands are a placeholder until a max heart rate is known. */
         private val ZONES = intArrayOf(Color.rgb(124, 142, 156), Color.rgb(77, 163, 255), Color.rgb(79, 209, 139), ZONE_ORANGE, RED)

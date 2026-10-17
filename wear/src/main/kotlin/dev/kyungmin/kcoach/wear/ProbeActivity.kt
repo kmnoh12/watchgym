@@ -41,7 +41,7 @@ class ProbeActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(24, 28, 24, 40)
         }
-        column.addView(text("KCOACH 실측", 12f, Color.rgb(0, 229, 255), bold = true))
+        column.addView(text("KCOACH 실측", 12f, WatchWorkoutFace.SAGE, bold = true))
         statusText = text("", 11f, Color.WHITE).apply { setPadding(0, 10, 0, 10) }
         column.addView(statusText)
         startButton = button("시작") { toggleProbe() }
@@ -52,7 +52,7 @@ class ProbeActivity : Activity() {
             render()
         }
         column.addView(screenButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8 })
-        column.addView(text(lastExitSummary(), 9f, Color.rgb(150, 160, 170)).apply { setPadding(0, 14, 0, 0) })
+        column.addView(text(lastExitSummary(), 9f, WatchWorkoutFace.MUTED).apply { setPadding(0, 14, 0, 0) })
         setContentView(ScrollView(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(column)
@@ -133,7 +133,7 @@ class ProbeActivity : Activity() {
     private fun button(value: String, onClick: () -> Unit) = text(value, 13f, Color.WHITE, bold = true).apply {
         setPadding(16, 14, 16, 14)
         background = GradientDrawable().apply {
-            setColor(Color.rgb(35, 58, 72))
+            setColor(WatchWorkoutFace.CARD)
             cornerRadius = 40f
         }
         isClickable = true

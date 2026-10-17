@@ -64,7 +64,7 @@ class WearCommandService : WearableListenerService() {
         }
         if (path == WearSync.PATH_WORKOUT_CONTROL_ACK) {
             if (runCatching { dev.kyungmin.kcoach.core.WatchWorkoutControlAck.decode(payload) }.isFailure) return
-            ContextCompat.startForegroundService(this, Intent(this, WearWorkoutService::class.java)
+            startWorkoutOwner(Intent(this, WearWorkoutService::class.java)
                 .putExtra(WearWorkoutService.EXTRA_COMMAND, "WORKOUT_CONTROL_ACK").putExtra("payload", payload))
             return
         }
@@ -74,7 +74,7 @@ class WearCommandService : WearableListenerService() {
         }
         if (path == WearSync.PATH_CALIBRATION_CAMERA_STATE) {
             if (runCatching { dev.kyungmin.kcoach.core.CalibrationCameraState.decode(payload) }.isFailure) return
-            ContextCompat.startForegroundService(this, Intent(this, WearWorkoutService::class.java)
+            startWorkoutOwner(Intent(this, WearWorkoutService::class.java)
                 .putExtra(WearWorkoutService.EXTRA_COMMAND, "CALIBRATION_CAMERA_STATE").putExtra("payload", payload))
             return
         }
@@ -98,18 +98,18 @@ class WearCommandService : WearableListenerService() {
         }
         if (path == WearSync.PATH_MANUAL_ACK) {
             if (runCatching { dev.kyungmin.kcoach.core.ManualSetAck.decode(payload) }.isFailure) return
-            ContextCompat.startForegroundService(this, Intent(this, WearWorkoutService::class.java)
+            startWorkoutOwner(Intent(this, WearWorkoutService::class.java)
                 .putExtra(WearWorkoutService.EXTRA_COMMAND, "MANUAL_ACK").putExtra("payload", payload))
             return
         }
         if (path == WearSync.PATH_SET_RECORD) {
             if (runCatching { dev.kyungmin.kcoach.core.SetRecordCommand.decode(payload) }.isFailure) return
-            ContextCompat.startForegroundService(this, Intent(this, WearWorkoutService::class.java)
+            startWorkoutOwner(Intent(this, WearWorkoutService::class.java)
                 .putExtra(WearWorkoutService.EXTRA_COMMAND, "SET_RECORD").putExtra("payload", payload))
             return
         }
         if (path == WearSync.PATH_SET_ACK) {
-            ContextCompat.startForegroundService(this, Intent(this, WearWorkoutService::class.java)
+            startWorkoutOwner(Intent(this, WearWorkoutService::class.java)
                 .putExtra(WearWorkoutService.EXTRA_COMMAND, "SET_ACK").putExtra("payload", payload))
             return
         }
@@ -217,7 +217,16 @@ class WearCommandService : WearableListenerService() {
                 putExtra("targetReps", fields.getOrNull(5)?.toIntOrNull() ?: 10)
             }
         }
-        ContextCompat.startForegroundService(this, intent)
+        startWorkoutOwner(intent)
+    }
+
+    private fun startWorkoutOwner(intent: Intent) {
+        try { ContextCompat.startForegroundService(this, intent) }
+        catch (error: RuntimeException) {
+            // The sender's durable outbox retries: starting the service is never an application ACK.
+            LocalExitDiagnostics.event("service-launch-failed", "", "UNAVAILABLE", 0, error)
+            android.util.Log.e("KCoachWear", "Workout service launch deferred; no command acknowledgement", error)
+        }
     }
 
     /** The phone's probe screen opened or closed: stream (or stop) without anyone touching the watch. */

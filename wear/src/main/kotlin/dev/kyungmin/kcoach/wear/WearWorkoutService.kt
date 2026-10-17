@@ -107,7 +107,9 @@ class WearWorkoutService : Service(), SensorEventListener {
                 val candidate = forearmRotationDetector?.candidateStartNs ?: profiledMotionDetector?.candidateStartNs
                 if (setEndGate.shouldEnd(android.os.SystemClock.elapsedRealtimeNanos(), candidate,
                         profiledMotionDetector?.maximumCycleNs ?: (trackingProfile.maximumRepMs * 1_000_000L),
-                        setEndWaitNs())) completeSet()
+                        setEndWaitNs())) {
+                    try { completeSet() } catch (error: Exception) { runtimeFailure("set-timer", error) }
+                }
             }
             if (!serviceDestroyed && (running || paused) && trackingProfile.mode != TrackingMode.MANUAL_REQUIRED)
                 handler.postDelayed(this, if (paused) 1_000L else 100L)
@@ -147,6 +149,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private var captureRecoveryError: String? = null
     private var captureSampleCount = 0
     private var captureChunkIndex = 0
+    private var finalizingCaptureId: String? = null
     private var captureLimitLogged = false
     private var restTicker: Runnable? = null
     private var phoneWatchdog: Runnable? = null
@@ -218,8 +221,16 @@ class WearWorkoutService : Service(), SensorEventListener {
     private val workoutControlRetry = Runnable { replayWorkoutControls() }
     private val pendingCaptureRetry = Runnable { retryPendingCaptures() }
 
+    private var startupFailed = false
     override fun onCreate() {
         super.onCreate()
+        try { createRuntime() } catch (error: RuntimeException) {
+            startupFailed = true
+            LocalExitDiagnostics.event("service-start-failed", sessionId, currentPhase(), lastCaptureTimestampNs, error)
+            stopSelf() // Never claim a healthy owner after an FGS/permission/sensor startup failure.
+        }
+    }
+    private fun createRuntime() {
         serviceDestroyed = false
         sensorManager = getSystemService(SensorManager::class.java)
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -252,6 +263,16 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (startupFailed) return START_NOT_STICKY
+        return try { handleStartCommand(intent, flags, startId) }
+        catch (error: Exception) {
+            LocalExitDiagnostics.event("command-deferred", sessionId, currentPhase(), lastCaptureTimestampNs, error)
+            Log.e(TAG, "Command deferred; no application acknowledgement", error)
+            restartMode()
+        }
+    }
+
+    private fun handleStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val type = intent?.getStringExtra(EXTRA_COMMAND)
         if (intent != null && type in setOf("REST", "SYNC") && (intent.hasExtra("restRev") || phoneRev > 0)) {
             val sameSession = intent.getStringExtra("session") == sessionId
@@ -261,7 +282,10 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
             if (sameSession && intent.getLongExtra("watchRestSeq", 0) < mySeq) {
                 phoneRev = rev
-                check(checkpoint())
+                if (!checkpoint()) {
+                    runtimeFailure("command-checkpoint", java.io.IOException("Rest revision checkpoint failed"))
+                    return restartMode()
+                }
                 markPhoneAlive(); acknowledgeCommand(intent, "APPLIED"); return restartMode()
             }
         }
@@ -409,7 +433,13 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
         }
         }
-        if (applied.isFailure) { Log.e(TAG, "Command deferred; durable state retained", applied.exceptionOrNull()); if (captureRecoveryError == null) checkpoint(); return restartMode() }
+        if (applied.isFailure) {
+            val error = requireNotNull(applied.exceptionOrNull())
+            LocalExitDiagnostics.event("command-deferred", sessionId, currentPhase(), lastCaptureTimestampNs, error)
+            Log.e(TAG, "Command deferred; durable state retained", error)
+            if (captureRecoveryError == null && !checkpoint()) runtimeFailure("command-checkpoint", error)
+            return restartMode()
+        }
         if (type in MUTATING_COMMANDS && intent != null) {
             val previousRevision = lastCommandRevision
             val previousCommand = lastAppliedCommand
@@ -418,6 +448,7 @@ class WearWorkoutService : Service(), SensorEventListener {
             if (checkpoint()) acknowledgeCommand(intent, "APPLIED") else {
                 lastCommandRevision = previousRevision
                 lastAppliedCommand = previousCommand
+                runtimeFailure("command-checkpoint", java.io.IOException("Command checkpoint failed"))
             }
         }
         val mode = restartMode()
@@ -428,7 +459,8 @@ class WearWorkoutService : Service(), SensorEventListener {
     override fun onDestroy() {
         serviceDestroyed = true
         handler.removeCallbacks(setEndTicker)
-        checkpoint()
+        if (!startupFailed) checkpoint() // A failed startup has not restored the original owner yet.
+        LocalExitDiagnostics.event("service-destroyed", sessionId, currentPhase(), lastCaptureTimestampNs)
         stopRestTicker()
         phoneWatchdog?.let(handler::removeCallbacks)
         phoneWatchdog = null
@@ -436,7 +468,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         handler.removeCallbacks(completionRetry)
         handler.removeCallbacks(manualRetry)
         handler.removeCallbacks(workoutControlRetry)
-        sensorManager.unregisterListener(this)
+        if (::sensorManager.isInitialized) runCatching { sensorManager.unregisterListener(this) }
         emulatorBridge.stop()
         outboundExecutor.shutdown()
         captureTransferExecutor.shutdown()
@@ -581,7 +613,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun replayCompletion() {
         handler.removeCallbacks(completionRetry)
         val payload = pendingCompletion ?: return
-        if (checkpoint()) sendToPhone(WearSync.PATH_LIVE, payload, coalescible = false)
+        if (captureRecoveryError == null && checkpoint()) sendToPhone(WearSync.PATH_LIVE, payload, coalescible = false)
         if (!serviceDestroyed) handler.postDelayed(completionRetry, 3_000L)
     }
 
@@ -724,9 +756,9 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun restartMode(): Int = if (sessionId.isNotBlank() || pendingCompletion != null || manualOutbox.pending().isNotEmpty() || workoutControls.pending().isNotEmpty() || capturePrefs.getStringSet(KEY_PENDING_CAPTURE_IDS, emptySet()).orEmpty().isNotEmpty()) START_STICKY else START_NOT_STICKY
 
     private fun checkpoint(): Boolean = flushCaptureChunk() && persistRuntime()
+    private val chunkJournal get() = File(filesDir, "capture-checkpoint.json")
 
-    private fun persistRuntime(): Boolean = runCatching {
-        val state = JSONObject().put("session", sessionId).put("exerciseId", exerciseId).put("exerciseName", exerciseName)
+    private fun runtimeState(): JSONObject = JSONObject().put("session", sessionId).put("exerciseId", exerciseId).put("exerciseName", exerciseName)
             .put("setIndex", setIndex).put("setId", setId).put("attemptId", attemptId).put("targetReps", targetReps).put("weightKg", weightKg ?: JSONObject.NULL)
             .put("phoneRev", phoneRev).put("mySeq", mySeq)
             .put("restSeconds", restSeconds).put("restEndAtMs", restEndAtMs).put("pausedRestRemainingMs", pausedRestRemainingMs)
@@ -735,6 +767,7 @@ class WearWorkoutService : Service(), SensorEventListener {
             .put("trackingProfileSnapshot", dev.kyungmin.kcoach.core.TrackingProfileSnapshot.encode(trackingProfile))
             .put("calibrationStage", calibrationStage?.name ?: JSONObject.NULL).put("pendingCompletion", pendingCompletion ?: JSONObject.NULL)
             .put("chunks", JSONArray(captureChunkFiles.map { it.name })).put("captureSampleCount", captureSampleCount)
+            .put("finalizingCaptureId", finalizingCaptureId ?: JSONObject.NULL)
             .put("captureRecoveryError", captureRecoveryError ?: JSONObject.NULL).put("lastCaptureTimestampNs", lastCaptureTimestampNs)
             .put("captureAttemptInterrupted", captureAttemptInterrupted).put("captureSegmentId", captureSegmentId)
             .put("sensorClockNeedsCheck", sensorClockNeedsCheck)
@@ -753,13 +786,25 @@ class WearWorkoutService : Service(), SensorEventListener {
             .put("lastTempoAlertNs", lastTempoAlertNs)
             .put("activeInterrupted", activeInterrupted)
             .put("activeSampleCalls", activeSampleCalls)
-        runtimePrefs.edit().putString("state", state.toString()).putLong("commandRevision", lastCommandRevision).putString("lastAppliedCommand", lastAppliedCommand).commit()
+
+    private fun persistRuntime(): Boolean = runCatching {
+        val state = runtimeState()
+        val saved = runtimePrefs.edit().putString("state", state.toString()).putLong("commandRevision", lastCommandRevision).putString("lastAppliedCommand", lastAppliedCommand).commit()
+        if (saved && chunkJournal.exists()) check(chunkJournal.delete()) { "Chunk checkpoint journal could not be retired" }
+        saved
     }.onFailure { Log.e(TAG, "watch runtime persistence failed", it) }.getOrDefault(false)
 
     private fun restoreRuntime() {
         lastCommandRevision = runtimePrefs.getLong("commandRevision", 0)
         lastAppliedCommand = runtimePrefs.getString("lastAppliedCommand", "").orEmpty()
-        val encoded = runtimePrefs.getString("state", null) ?: return
+        val encoded = runCatching {
+            if (chunkJournal.isFile) chunkJournal.readText() else runtimePrefs.getString("state", null)
+        }.getOrElse {
+            captureRecoveryError = "Chunk checkpoint cannot be read"
+            paused = true
+            LocalExitDiagnostics.event("recovery-failed", sessionId, currentPhase(), lastCaptureTimestampNs, it)
+            return
+        } ?: return
         runCatching {
             val state = JSONObject(encoded)
             sessionId = state.getString("session"); exerciseId = state.getString("exerciseId"); exerciseName = state.getString("exerciseName")
@@ -775,7 +820,9 @@ class WearWorkoutService : Service(), SensorEventListener {
             reps = state.getInt("reps"); heartRate = 0 // A persisted reading is not a new sensor measurement.
             calibrationStage = state.optString("calibrationStage").let { name -> CalibrationStage.entries.firstOrNull { it.name == name } }
             pendingCompletion = if (state.isNull("pendingCompletion")) null else state.getString("pendingCompletion")
+            finalizingCaptureId = state.optString("finalizingCaptureId").takeIf { it.isNotBlank() && it != "null" }
             lastCaptureTimestampNs = state.optLong("lastCaptureTimestampNs")
+            LocalExitDiagnostics.event("recovery-attempt", sessionId, "RECOVERING", lastCaptureTimestampNs)
             captureAttemptInterrupted = state.optBoolean("captureAttemptInterrupted", false)
             captureSegmentId = state.optString("captureSegmentId", "")
             captureBootCount = if (state.has("bootCount") && !state.isNull("bootCount")) state.getInt("bootCount") else null
@@ -869,10 +916,13 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
             if (running && !countingPaused && reps >= targetReps && trackingProfile.mode != TrackingMode.MANUAL_REQUIRED &&
                 dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId).stopAtTarget) completeSet() else if (running) registerSensors()
+            LocalExitDiagnostics.event("recovery-restored", sessionId, currentPhase(), lastCaptureTimestampNs)
+            // Recovery is an interruption. No samples are invented for the process downtime.
             // The phone resynchronizes an unfinished rest when the heartbeat reconnects.
         }.onFailure {
             running = false; resting = false; paused = true
             captureRecoveryError = it.message ?: "Invalid saved capture runtime"
+            LocalExitDiagnostics.event("recovery-failed", sessionId, currentPhase(), lastCaptureTimestampNs, it)
             Log.e(TAG, "watch runtime recovery failed; stored state retained", it)
         }
     }
@@ -932,6 +982,10 @@ class WearWorkoutService : Service(), SensorEventListener {
         val recovered = runCatching { readCaptureChunks(expectedCount) }
         if (recovered.isSuccess) {
             captureSampleCount = recovered.getOrThrow().sumOf { it.sampleCount }
+            if (captureAttemptInterrupted) {
+                captureRecoveryError = "Sensor attempt was interrupted; original retained"
+                return false
+            }
             captureRecoveryError = null
             captureChunkIndex = (captureChunkFiles.mapNotNull { it.name.removeSuffix(".kcs.part").substringAfterLast('-').toIntOrNull() }.maxOrNull() ?: -1) + 1
             return true
@@ -1005,7 +1059,8 @@ class WearWorkoutService : Service(), SensorEventListener {
             override fun run() {
                 val last = lastPhoneHeartbeatAtMs
                 if (last > 0L && System.currentTimeMillis() - last > PHONE_HEARTBEAT_TIMEOUT_MS) {
-                    resetForPhoneDisconnect()
+                    try { resetForPhoneDisconnect() }
+                    catch (error: Exception) { runtimeFailure("phone-watchdog", error) }
                 }
                 handler.postDelayed(this, PHONE_WATCHDOG_INTERVAL_MS)
             }
@@ -1018,7 +1073,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (!paired && !running && !resting && !paused) return
         paired = false
         lastPhoneHeartbeatAtMs = 0L
-        checkpoint()
+        check(checkpoint()) { "Disconnect checkpoint failed" }
         broadcastState(force = true)
     }
 
@@ -1307,25 +1362,27 @@ class WearWorkoutService : Service(), SensorEventListener {
         targetReps = intent.getIntExtra("targetReps", targetReps).coerceAtLeast(0)
         weightKg = intent.getDoubleExtra("weightKg", Double.NaN).takeUnless { it.isNaN() }
         heartRateSensor?.let { sensor ->
-            if (hasBodySensorPermission()) sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            if (hasBodySensorPermission()) registerSensor(sensor, SensorManager.SENSOR_DELAY_NORMAL)
         }
         sendLiveState("RESTING", false, force = true)
         stopRestTicker()
         val tick = object : Runnable {
             override fun run() {
                 if (!resting) return
-                val left = ((restEndAtMs - System.currentTimeMillis() + 999) / 1_000).coerceAtLeast(0)
-                sendLiveState("RESTING", false, force = true)
-                broadcastState()
-                if (left <= 0) {
-                    resting = false
-                    restEndAtMs = 0L
-                    persistRuntime()
-                    sendLiveState("REST_COMPLETE", false, force = true)
-                    broadcastState(force = true)
-                } else {
-                    handler.postDelayed(this, 1_000L)
-                }
+                try {
+                    val left = ((restEndAtMs - System.currentTimeMillis() + 999) / 1_000).coerceAtLeast(0)
+                    sendLiveState("RESTING", false, force = true)
+                    broadcastState()
+                    if (left <= 0) {
+                        resting = false
+                        restEndAtMs = 0L
+                        check(persistRuntime()) { "Rest completion checkpoint failed" }
+                        sendLiveState("REST_COMPLETE", false, force = true)
+                        broadcastState(force = true)
+                    } else {
+                        handler.postDelayed(this, 1_000L)
+                    }
+                } catch (error: Exception) { runtimeFailure("rest-timer", error) }
             }
         }
         restTicker = tick
@@ -1411,7 +1468,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         restEndAtMs = 0L
         closeSessionId(sessionId)
         resetSessionFields()
-        persistRuntime()
+        check(persistRuntime()) { "Session closure checkpoint failed" }
         broadcastState(force = true)
         val pendingCaptures = capturePrefs.getStringSet(KEY_PENDING_CAPTURE_IDS, emptySet()).orEmpty()
         if (pendingCaptures.isEmpty() && pendingCompletion == null) stopRuntimeService(startId)
@@ -1420,10 +1477,15 @@ class WearWorkoutService : Service(), SensorEventListener {
 
     private fun registerSensors() {
         if (hasBodySensorPermission()) {
-            accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-            gyroscope?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-            heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            accelerometer?.let { registerSensor(it, SensorManager.SENSOR_DELAY_GAME) }
+            gyroscope?.let { registerSensor(it, SensorManager.SENSOR_DELAY_GAME) }
+            heartRateSensor?.let { registerSensor(it, SensorManager.SENSOR_DELAY_NORMAL) }
         }
+    }
+
+    private fun registerSensor(sensor: Sensor, delay: Int) {
+        try { sensorManager.registerListener(this, sensor, delay) }
+        catch (error: RuntimeException) { runtimeFailure("sensor-register", error); throw error }
     }
 
     private fun unregisterMotionSensors() {
@@ -1432,6 +1494,26 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
+        try { processSensorEvent(event) }
+        catch (error: Exception) { runtimeFailure("sensor", error) }
+    }
+
+    private fun runtimeFailure(boundary: String, error: Throwable) {
+        if (running && captureSampleCount > 0) captureAttemptInterrupted = true
+        running = false; resting = false; paused = true
+        captureRecoveryError = "Runtime interrupted at $boundary"
+        handler.removeCallbacks(setEndTicker)
+        stopRestTicker()
+        cancelMeasurementPreparation()
+        runCatching { sensorManager.unregisterListener(this) }
+        // Keep the original clocks and identifiers; do not emit a completion or an applied ACK.
+        runCatching { checkpoint() }
+        LocalExitDiagnostics.event("runtime-interrupted-$boundary", sessionId, currentPhase(), lastCaptureTimestampNs, error)
+        broadcastState(force = true)
+    }
+
+    private fun processSensorEvent(event: SensorEvent) {
+        if (captureRecoveryError != null) return
         sensorEventCount += 1
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
@@ -1590,11 +1672,12 @@ class WearWorkoutService : Service(), SensorEventListener {
                 weightKg, heartRate, "SET_COMPLETE", false, restEndAtMs, captureSampleCount, trackingProfile.id,
                 trackingProfile.calibrationProfileVersion != null, UUID.randomUUID().toString(), setId, attemptId)
             if (!checkpoint()) {
-                Log.e(TAG, "completion could not be persisted; raw capture retained")
-                return
+                pendingCompletion = null
+                throw java.io.IOException("Completion checkpoint failed; raw capture retained")
             }
         }
         val savedCapture = saveCapture()
+        check(captureSampleCount == 0 || savedCapture != null) { "Completion capture save failed" }
         savedCapture?.let(::sendCaptureToPhone)
         if (wasCalibration) {
             Log.i(CALIBRATION_TAG, "stage=CALIBRATION_RESULT session=$sessionId exerciseId=$exerciseId reps=$reps")
@@ -1772,7 +1855,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun saveCapture(): SavedCapture? {
         if (captureSampleCount == 0 || sessionId.isBlank() || captureRecoveryError != null) return null
         if (captureAttemptInterrupted) {
-            captureRecoveryError = "Sensor attempt was interrupted by reboot"
+            captureRecoveryError = "Sensor attempt was interrupted"
             quarantineIncompleteCapture()
             return null // Both boot streams stay recoverable; neither is a complete set analysis.
         }
@@ -1780,7 +1863,9 @@ class WearWorkoutService : Service(), SensorEventListener {
             check(flushCaptureChunk()) { "failed to flush capture chunk" }
             val allRecords = readCaptureChunks(captureSampleCount).flatMap { it.records }
             check(allRecords.size == captureSampleCount) { "capture chunk sample count mismatch" }
-            val captureId = "capture-${UUID.randomUUID()}"
+            val captureId = finalizingCaptureId ?: "capture-${UUID.randomUUID()}".also { finalizingCaptureId = it }
+            check(persistRuntime()) { "Capture identity checkpoint failed" }
+            require(captureId.matches(Regex("[A-Za-z0-9._-]{1,160}")))
             val fileName = "$captureId.kcs"
             val bytes = ByteArrayOutputStream().use { output ->
                 SensorCaptureFormat.write(output, allRecords, 50.0)
@@ -1853,10 +1938,15 @@ class WearWorkoutService : Service(), SensorEventListener {
             atomicWrite(File(filesDir, "$captureId.manifest"), manifest.toByteArray(Charsets.UTF_8))
             rememberPendingCapture(captureId)
             writeStorageReport()
-            sendToPhone(WearSync.PATH_CAPTURE_MANIFEST_V3, manifest)
             Log.i(TAG, "capture saved id=$captureId samples=${document.sampleCount} bytes=${bytes.size}")
-            captureChunkFiles.forEach(File::delete)
+            val finalizedChunks = captureChunkFiles.toList()
             captureChunkFiles.clear()
+            if (!persistRuntime()) {
+                captureChunkFiles.addAll(finalizedChunks)
+                throw java.io.IOException("Finalized capture checkpoint failed")
+            }
+            finalizedChunks.forEach(File::delete)
+            sendToPhone(WearSync.PATH_CAPTURE_MANIFEST_V3, manifest)
             SavedCapture(captureId, fileName, bytes, manifest)
         }.onFailure {
             captureRecoveryError = it.message ?: "Capture finalization failed"
@@ -1885,24 +1975,32 @@ class WearWorkoutService : Service(), SensorEventListener {
         }
         captureRecords += record
         captureSampleCount += 1
-        if (captureRecords.size >= CAPTURE_CHUNK_SAMPLES) flushCaptureChunk()
+        if (captureRecords.size >= CAPTURE_CHUNK_SAMPLES && !flushCaptureChunk())
+            throw java.io.IOException("Capture checkpoint failed")
     }
 
     private fun flushCaptureChunk(): Boolean {
-        if (captureRecords.isEmpty()) return true
+        if (captureRecords.isEmpty()) return !chunkJournal.isFile || persistRuntime()
         return runCatching {
             val safeSession = sessionId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
             val identityKey = "$setId:$attemptId" + captureSegmentId.takeIf { it.isNotBlank() }?.let { ":$it" }.orEmpty()
             val identity = UUID.nameUUIDFromBytes(identityKey.toByteArray(Charsets.UTF_8))
-            val chunk = File(filesDir, ".capture-$safeSession-$identity-${captureChunkIndex++}.kcs.part")
+            val chunk = File(filesDir, ".capture-$safeSession-$identity-${captureChunkIndex}.kcs.part")
             val bytes = ByteArrayOutputStream().also { output ->
                 SensorCaptureFormat.write(output, captureRecords.toList(), 50.0)
             }.toByteArray()
-            atomicWrite(chunk, bytes)
             captureChunkFiles += chunk
+            try {
+                // The journal pins the original session/set/attempt before the new chunk is committed.
+                atomicWrite(chunkJournal, runtimeState().toString().toByteArray(Charsets.UTF_8))
+                atomicWrite(chunk, bytes)
+            } catch (error: Exception) {
+                captureChunkFiles.remove(chunk) // The original records remain in memory for a retry.
+                throw error
+            }
+            captureChunkIndex++
             captureRecords.clear()
             persistRuntime()
-            true
         }.getOrElse {
             Log.e(TAG, "capture chunk flush failed", it)
             false
@@ -1920,6 +2018,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         captureChunkFiles.clear()
         captureSampleCount = 0
         captureChunkIndex = 0
+        finalizingCaptureId = null
         captureLimitLogged = false
         lastCaptureTimestampNs = 0L
     }
@@ -2135,6 +2234,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         WatchSessionTally.get(this).observe(sessionId, setId, attemptId, running, resting, paused, reps, weightKg, heartRate, now)
         recordState.currentRecord()?.let { WatchSessionTally.get(this).noteSetRecord(it.sessionId, it.setId) }
         if (!force && now - lastUiBroadcastAtMs < UI_BROADCAST_INTERVAL_MS) return
+        LocalExitDiagnostics.workoutPhase(currentPhase(), sessionId, lastCaptureTimestampNs)
         lastUiBroadcastAtMs = now
         uiBroadcastCount += 1
         sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).apply {

@@ -195,7 +195,7 @@ internal class JogBar(context: Context) : View(context) {
         glyph.textAlign = Paint.Align.LEFT; canvas.drawText("−", 26 * k, gy, glyph)
         glyph.textAlign = Paint.Align.RIGHT; canvas.drawText("+", width - 26 * k, gy, glyph)
         val active = abs(offset) > 1f
-        knob.color = if (active) WatchWorkoutFace.YELLOW else Color.rgb(50, 56, 55)
+        knob.color = if (active) WatchWorkoutFace.YELLOW else WatchWorkoutFace.CONTROL
         label.color = if (active) Color.rgb(36, 26, 0) else WatchWorkoutFace.WHITE
         label.textSize = 36 * k
         val cx = width / 2f + offset
@@ -238,7 +238,7 @@ internal class EditPageView(context: Context) : Grid432(context) {
     val sub = text(11f, WatchWorkoutFace.MUTED)
     val segPrevious = text(10f, WatchWorkoutFace.WHITE, bold = true)
     val segNext = text(10f, WatchWorkoutFace.MUTED, medium = true)
-    private val segTrack = View(context).apply { background = round(Color.rgb(44, 51, 50), 12) }
+    private val segTrack = View(context).apply { background = round(WatchWorkoutFace.CARD, 12) }
     val finish = text(12f, Color.rgb(23, 22, 18), bold = true).apply { background = round(WatchWorkoutFace.BONE, 14) }
     val chevronDown = ChevronView(context, false)
     private val repsRow = Row(Field.REPS)
@@ -252,13 +252,13 @@ internal class EditPageView(context: Context) : Grid432(context) {
 
     private inner class Row(val field: Field) {
         val value = text(15.5f, WatchWorkoutFace.WHITE, medium = true).apply {
-            background = round(Color.rgb(35, 41, 40), 12); isClickable = true; isFocusable = true
+            background = round(WatchWorkoutFace.CARD, 12); isClickable = true; isFocusable = true
             setOnClickListener { onKeypad(field) }
         }
         val buttons = listOf(-5, -1, 1, 5).map { delta ->
-            text(11f, Color.WHITE, medium = true).also { b ->
+            text(11f, WatchWorkoutFace.BONE).apply { typeface = Typeface.create(Typeface.DEFAULT, 600, false) }.also { b ->
                 b.text = when (delta) { -5 -> "−5"; -1 -> "−"; 1 -> "+"; else -> "+5" }
-                b.background = round(if (abs(delta) == 5) Color.rgb(80, 89, 88) else Color.rgb(52, 59, 58), 12)
+                b.background = round(if (abs(delta) == 5) WatchWorkoutFace.LARGE_STEP else WatchWorkoutFace.CONTROL, 12)
                 b.isClickable = true; b.isFocusable = true
                 b.contentDescription = (if (field == Field.REPS) "횟수 " else "무게 ") + b.text
                 b.setOnClickListener { onDelta(field, delta) }
@@ -343,9 +343,12 @@ internal class EditPageView(context: Context) : Grid432(context) {
         sub.text = left; sub.setTextColor(WatchWorkoutFace.YELLOW)
         segPrevious.text = previousLabel; segNext.text = nextLabel
         val onFirst = selected == 0
-        segPrevious.setTextColor(if (onFirst) WatchWorkoutFace.WHITE else WatchWorkoutFace.MUTED); segNext.setTextColor(if (onFirst) WatchWorkoutFace.MUTED else WatchWorkoutFace.WHITE)
-        segPrevious.background = if (onFirst) round(Color.rgb(74, 83, 82), 9) else null
-        segNext.background = if (onFirst) null else round(Color.rgb(74, 83, 82), 9)
+        segPrevious.setTextColor(if (onFirst) WatchWorkoutFace.BONE else WatchWorkoutFace.MUTED)
+        segNext.setTextColor(if (onFirst) WatchWorkoutFace.MUTED else WatchWorkoutFace.SAGE)
+        segPrevious.typeface = Typeface.create(Typeface.DEFAULT, if (onFirst) 700 else 500, false)
+        segNext.typeface = Typeface.create(Typeface.DEFAULT, if (onFirst) 500 else 700, false)
+        segPrevious.background = if (onFirst) round(WatchWorkoutFace.PREVIOUS_SELECTED, 9) else null
+        segNext.background = if (onFirst) null else round(WatchWorkoutFace.SAGE_WASH, 9)
         show(repsRow.value, reps, "회"); show(weightRow.value, weight, "kg")
     }
 }
