@@ -1723,10 +1723,15 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun recordDetectedRepAt(endNs: Long) {
         if (!running || countingPaused || trackingProfile.mode == TrackingMode.MANUAL_REQUIRED) return
         if (!setEndGate.rep(endNs)) return
+        val callbackNs = android.os.SystemClock.elapsedRealtimeNanos()
         reps += 1
-        checkpoint()
+        // Haptic first: the synchronous checkpoint writes below must not delay the cue.
         // Exactly the target rep gets the triple pulse; reps past the target go back to the short tick.
         if (reps == targetReps) vibrateTargetReached() else vibrateShort()
+        val vibratedNs = android.os.SystemClock.elapsedRealtimeNanos()
+        checkpoint()
+        Log.i(TAG, "rep=$reps profile=${trackingProfile.id} eventNs=$endNs detectLagMs=${(callbackNs - endNs) / 1_000_000} " +
+            "vibrateCallMs=${(vibratedNs - callbackNs) / 1_000_000} checkpointMs=${(android.os.SystemClock.elapsedRealtimeNanos() - vibratedNs) / 1_000_000}")
         if (reps >= targetReps && dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId).stopAtTarget) completeSet()
     }
 
