@@ -110,7 +110,7 @@ object PhoneRepAnalyzer {
         val detector = ProfiledMotionRepDetector(profile)
         val motionEvents = buildList {
             records.forEach { record -> detector.add(SensorRecordQuality.forCounting(record))?.let(::add) }
-            detector.finish()?.let(::add)
+            detector.finishAll().forEach(::add)
         }
         val events = motionEvents.mapIndexed { index, event ->
             RepEvent(

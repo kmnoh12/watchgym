@@ -35,7 +35,10 @@ object TrackingProfileSnapshot {
                 p.exerciseId == "rope_extension" && generic.family == MotionFamily.FLEXION_EXTENSION
             val historicalPress = migratedPress &&
                 p.family == MotionFamily.PRESS_RETURN && p.signal == TrackingSignal.COMBINED_MOTION
-            require((p.family == generic.family && p.signal == generic.signal || historicalPress) && p.mode == generic.mode &&
+            // Recordings made before these exercises moved to the cycle-axis engine replay with their frozen engine.
+            val historicalCycle = generic.family == MotionFamily.CYCLE_AXIS_RETURN &&
+                p.family in setOf(MotionFamily.PULL_RETURN, MotionFamily.MULTI_AXIS_RETURN, MotionFamily.FLEXION_EXTENSION)
+            require((p.family == generic.family && p.signal == generic.signal || historicalPress || historicalCycle) && p.mode == generic.mode &&
                 p.capabilityTier == generic.capabilityTier && p.countMode == generic.countMode) {
                 "recorded profile contradicts exercise measurement policy"
             }

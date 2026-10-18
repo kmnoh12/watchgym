@@ -78,7 +78,7 @@ internal object CurrentDetectorReplay {
         } else {
             val detector = ProfiledMotionRepDetector(profile)
             detector.beginCounting()
-            samples.count { detector.add(it) != null } + if (detector.finish() != null) 1 else 0
+            samples.count { detector.add(it) != null } + detector.finishAll().size
         }
         val result = PhoneRepAnalyzer.analyze(document, profile, watch).result
         return Result(watch, result.phoneReanalyzedReps, result.confirmedReps, result.analysisConfidence, result.signalQuality)

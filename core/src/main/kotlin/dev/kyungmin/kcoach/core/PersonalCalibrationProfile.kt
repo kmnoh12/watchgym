@@ -61,7 +61,7 @@ object PersonalCalibrationBuilder {
             val detector = ProfiledMotionRepDetector(calibrationProfile)
             buildList {
                 document.records.forEach { detector.add(it.sample)?.let(::add) }
-                detector.finish()?.let(::add)
+                detector.finishAll().forEach(::add)
             }.map { EventFeatures(it.durationMs, it.motionDisplacement, it.peakMotionRate, it.trajectorySpread) }
         }
         if (events.size < 3) return CalibrationBuildResult.Failed("fewer_than_3_valid_reps", events.size)
