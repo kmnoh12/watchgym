@@ -1602,7 +1602,12 @@ class WearWorkoutService : Service(), SensorEventListener {
                                 }
                             }.onFailure { Log.w(TAG, "Basic detector receipt failed", it) }
                         }
-                        if (marker != null) {
+                        if (marker is dev.kyungmin.kcoach.core.ProfiledMotionRepEvent &&
+                            trackingProfile.family == dev.kyungmin.kcoach.core.MotionFamily.VERTICAL_PRESS_RETURN &&
+                            !dev.kyungmin.kcoach.core.VerticalRepAmplitude.accepts(marker)) {
+                            Log.i(TAG, "small vertical rep refused: displacement=${"%.2f".format(java.util.Locale.US, marker.motionDisplacement)} " +
+                                "floor=${dev.kyungmin.kcoach.core.VerticalRepAmplitude.MIN_TOTAL_DISPLACEMENT} profile=${trackingProfile.id}")
+                        } else if (marker != null) {
                             val repEndNs = when (marker) {
                                 is dev.kyungmin.kcoach.core.ReviewedPatternDetection -> marker.cycle.endNs
                                 is dev.kyungmin.kcoach.core.ForearmRotationRepEvent -> marker.endTimestampNs
