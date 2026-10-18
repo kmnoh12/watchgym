@@ -2029,7 +2029,7 @@ class MainActivity : ComponentActivity() {
             if (personalizedTracking) " · 개인보정 적용" else ""
         val secondLine = when (phase) {
             "POSITIONING" -> "측정 준비 중 · 손목 안정 확인"
-            "PREPARING" -> "손목 안정 확인 · 흔들림 없이 3초 유지"
+            "PREPARING" -> "손목 안정 확인 · 흔들림 없이 2.5초 유지"
             "START_DIRECTION_WAITING" -> "준비 손목 방향 확인 · 2초 유지 또는 워치에서 직접 시작"
             "WORKING_START_CONFIRMED" -> "시작 손목 방향 확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
             "WORKING_START_BYPASSED" -> "직접 시작 · 방향 미확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"

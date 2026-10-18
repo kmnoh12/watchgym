@@ -25,7 +25,7 @@ data class StartPoseGateConfig(
 ) {
     companion object {
         /** A workout set waits for the wrist to hold still this long before the start buzz and counting. */
-        const val WORKOUT_HOLD_MS = 3_000L
+        const val WORKOUT_HOLD_MS = 2_500L
 
         fun forProfile(profile: ExerciseTrackingProfile): StartPoseGateConfig = when (profile.signal) {
             TrackingSignal.FOREARM_ROTATION -> StartPoseGateConfig(

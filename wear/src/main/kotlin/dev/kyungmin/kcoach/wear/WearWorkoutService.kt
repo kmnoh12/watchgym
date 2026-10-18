@@ -95,6 +95,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private var attemptId = ""
     private val dataCleanupInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
     private val setEndGate = dev.kyungmin.kcoach.core.SetEndGate()
+    private val postTargetGuard = dev.kyungmin.kcoach.core.PostTargetTempoGuard()
     private var learnedRepWaitNs = 3_000_000_000L
     /** Silence that ends a set: 7 s while reps are still owed (a heavy set pausing mid-way), the usual 3 s once the target is met. */
     private fun setEndWaitNs() = dev.kyungmin.kcoach.core.SetEndGate.waitNs(reps, targetReps,
@@ -708,7 +709,7 @@ class WearWorkoutService : Service(), SensorEventListener {
 
     // Recreate only the unfinished detector windows; keep reps, frozen profiles and receipts.
     private fun resetCountingWindow() {
-        setEndGate.reset()
+        setEndGate.reset(); postTargetGuard.reset()
         forearmRotationDetector = forearmRotationDetector?.let { ForearmRotationRepDetector(trackingProfile).also { it.beginCounting() } }
         profiledMotionDetector = profiledMotionDetector?.let { ProfiledMotionRepDetector(trackingProfile).also { it.beginCounting() } }
         frozenActive?.let { activeDetector = dev.kyungmin.kcoach.core.ReviewedPatternDetector(exerciseId, it.runtime.compatibility, it.runtime) }
@@ -1284,7 +1285,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun configureTracking(savedSnapshot: String? = null) {
-        setEndGate.reset()
+        setEndGate.reset(); postTargetGuard.reset()
         learnedRepWaitNs = 3_000_000_000L
         handler.removeCallbacks(setEndTicker)
         handler.post(setEndTicker)
@@ -1392,7 +1393,7 @@ class WearWorkoutService : Service(), SensorEventListener {
 
     private fun pauseSession() {
         countingPaused = false
-        setEndGate.reset()
+        setEndGate.reset(); postTargetGuard.reset()
         tempoPolicy.pause()
         markPhoneAlive()
         if (!running && !resting) return
@@ -1608,7 +1609,7 @@ class WearWorkoutService : Service(), SensorEventListener {
                                 is dev.kyungmin.kcoach.core.ProfiledMotionRepEvent -> marker.endTimestampNs
                                 else -> sensorSample.timestampNs
                             }
-                            recordDetectedRepAt(repEndNs)
+                            recordDetectedRepAt(repEndNs, (marker as? dev.kyungmin.kcoach.core.ProfiledMotionRepEvent)?.turnaroundTimestampNs)
                             if (activeDetector != null && marker is dev.kyungmin.kcoach.core.ReviewedPatternDetection)
                                 observeTempo(marker, countingSample)
                             if (!running) return
@@ -1703,7 +1704,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun beginMeasurementCounting() {
-        setEndGate.reset()
+        setEndGate.reset(); postTargetGuard.reset()
         // configureActive already chose the frozen profile's wait; preparation must retain it.
         handler.removeCallbacks(setEndTicker)
         handler.post(setEndTicker)
@@ -1720,18 +1721,26 @@ class WearWorkoutService : Service(), SensorEventListener {
 
     private fun recordDetectedRep() = recordDetectedRepAt(android.os.SystemClock.elapsedRealtimeNanos())
 
-    private fun recordDetectedRepAt(endNs: Long) {
+    private fun recordDetectedRepAt(endNs: Long, turnaroundNs: Long? = null) {
         if (!running || countingPaused || trackingProfile.mode == TrackingMode.MANUAL_REQUIRED) return
+        if (!postTargetGuard.accept(endNs, reps, targetReps)) {
+            Log.i(TAG, "post-target rep refused: off-tempo event after rep=$reps target=$targetReps profile=${trackingProfile.id}")
+            return
+        }
         if (!setEndGate.rep(endNs)) return
         val callbackNs = android.os.SystemClock.elapsedRealtimeNanos()
         reps += 1
-        // Haptic first: the synchronous checkpoint writes below must not delay the cue.
+        // Haptic before the synchronous checkpoint writes below. Vertical presses hold the cue back so it lands near the bottom.
         // Exactly the target rep gets the triple pulse; reps past the target go back to the short tick.
-        if (reps == targetReps) vibrateTargetReached() else vibrateShort()
+        val cueDelayMs = if (trackingProfile.family == dev.kyungmin.kcoach.core.MotionFamily.VERTICAL_PRESS_RETURN && turnaroundNs != null)
+            dev.kyungmin.kcoach.core.RepCueDelay.delayMs(turnaroundNs, endNs) else 0L
+        val atTarget = reps == targetReps
+        if (cueDelayMs > 0L) handler.postDelayed({ if (atTarget) vibrateTargetReached(force = true) else vibrateShort(force = true) }, cueDelayMs)
+        else if (atTarget) vibrateTargetReached() else vibrateShort()
         val vibratedNs = android.os.SystemClock.elapsedRealtimeNanos()
         checkpoint()
         Log.i(TAG, "rep=$reps profile=${trackingProfile.id} eventNs=$endNs detectLagMs=${(callbackNs - endNs) / 1_000_000} " +
-            "vibrateCallMs=${(vibratedNs - callbackNs) / 1_000_000} checkpointMs=${(android.os.SystemClock.elapsedRealtimeNanos() - vibratedNs) / 1_000_000}")
+            "cueDelayMs=$cueDelayMs vibrateCallMs=${(vibratedNs - callbackNs) / 1_000_000} checkpointMs=${(android.os.SystemClock.elapsedRealtimeNanos() - vibratedNs) / 1_000_000}")
         if (reps >= targetReps && dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId).stopAtTarget) completeSet()
     }
 
@@ -2324,16 +2333,16 @@ class WearWorkoutService : Service(), SensorEventListener {
         }
     }
 
-    private fun vibrateShort() {
-        if (!running) return
+    private fun vibrateShort(force: Boolean = false) {
+        if (!running && !force) return
         val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
         // Same 35 ms length. A fixed mid-high strength (below the target pulse's 255) where the motor supports it.
         val amplitude = if (vibrator.hasAmplitudeControl()) REP_TICK_AMPLITUDE else VibrationEffect.DEFAULT_AMPLITUDE
         vibrator.vibrate(VibrationEffect.createOneShot(35, amplitude))
     }
 
-    private fun vibrateTargetReached() {
-        if (!running) return
+    private fun vibrateTargetReached(force: Boolean = false) {
+        if (!running && !force) return
         val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
         val timings = longArrayOf(0L, 70L, 60L, 70L, 60L, 110L)
         vibrator.vibrate(

@@ -169,7 +169,7 @@ class StartWristContextServiceTest {
         try {
             restored.get().onStartCommand(Intent().putExtra("command", "RESUME").putExtra("session", "session").putExtra("commandRevision", 4L), 0, 4)
             assertEquals("PREPARING", state().getStringExtra("phase"))
-            repeat(160) { sample(restored.get()) } // a still wrist for three seconds starts the measurement and its capture
+            repeat(135) { sample(restored.get()) } // a still wrist for two and a half seconds starts the measurement and its capture
             restored.get().onStartCommand(Intent().putExtra("command", "STOP").putExtra("session", "session").putExtra("commandRevision", 5L), 0, 5)
             val manifest = WireCodec.decode(app.filesDir.listFiles()!!.single { it.name.endsWith(".manifest") }.readText())
             assertEquals(declared, StartWristContextCodec.decode(manifest.payload.getValue("startWristContext")))
