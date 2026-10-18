@@ -79,6 +79,7 @@ data class CameraCaptureGuide(val id: String, val direction: String, val framing
                 recipe == MeasurementRecipe.MANUAL && id in setOf("hip_adduction", "hip_abduction") -> setOf(23, 24, 25, 26, 27, 28)
                 recipe == MeasurementRecipe.MANUAL -> setOf(11, 12, 15, 16, 23, 24, 27, 28)
                 recipe == MeasurementRecipe.SQUAT -> recipe.cameraLandmarks + 0
+                recipe == MeasurementRecipe.SIT_UP -> setOf(shoulder, hip, if (left) 25 else 26)
                 recipe == MeasurementRecipe.FLY -> setOf(shoulder, elbow, wrist, if (left) 12 else 11)
                 recipe == MeasurementRecipe.EXTERNAL_ROTATION -> setOf(shoulder, elbow, wrist)
                 // Elbow metrics use three arm joints; the shared yaw gate additionally requires both hips and shoulders.
@@ -94,6 +95,8 @@ data class CameraCaptureGuide(val id: String, val direction: String, val framing
                 MeasurementRecipe.CHEST_PRESS -> if (id == "chest_press") CameraMotion.ELBOW_PRESS else CameraMotion.ELBOW_FOLD
                 MeasurementRecipe.LATERAL_RAISE -> CameraMotion.SHOULDER_RAISE
                 MeasurementRecipe.SQUAT -> CameraMotion.SQUAT_KNEE_FLEXION
+                MeasurementRecipe.PUSH_UP -> CameraMotion.ELBOW_FOLD
+                MeasurementRecipe.SIT_UP -> CameraMotion.SITUP_HIP_FLEXION
                 MeasurementRecipe.PULLOVER -> CameraMotion.PULLOVER_REACH
                 MeasurementRecipe.FLY -> if (id == "machine_fly") CameraMotion.FLY_OPEN else CameraMotion.FLY_CLOSED
                 else -> null
@@ -139,6 +142,8 @@ data class CameraCaptureGuide(val id: String, val direction: String, val framing
             }
             MeasurementRecipe.EXTERNAL_ROTATION -> "팔꿈치를 90°로 굽혀 옆구리에 붙이고 시작"
             MeasurementRecipe.SQUAT -> "곧게 선 상태에서 시작"
+            MeasurementRecipe.PUSH_UP -> "팔을 편 플랭크 자세에서 시작"
+            MeasurementRecipe.SIT_UP -> "무릎을 세우고 누운 상태에서 시작"
             MeasurementRecipe.MANUAL -> null
         }
     }

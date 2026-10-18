@@ -114,6 +114,8 @@ object WorkoutData {
         "dumbbell_lateral_raise" to "lateral_raise", "one_arm_cable_lateral" to "lateral_raise",
         "crossover_reverse_fly" to "rear_delt", "machine_reverse_fly" to "rear_delt",
         "external_rotation" to "rotation",
+        "push_up" to "push_up", "sit_up" to "sit_up",
+        "squat" to "squat", "barbell_squat" to "squat", "front_squat" to "squat", "goblet_squat" to "squat", "smith_squat" to "squat",
         "leg_press" to "leg_press", "seated_leg_curl" to "leg_curl", "leg_extension" to "leg_extension",
         "hip_adduction" to "hip", "hip_abduction" to "hip",
     )
@@ -174,6 +176,13 @@ object WorkoutData {
         exercise("leg_extension", "레그 익스텐션", "하체", "하체", "머신", true),
         exercise("hip_adduction", "힙 어덕션", "하체", "하체", "머신"),
         exercise("hip_abduction", "힙 어브덕션", "하체", "하체", "머신"),
+        exercise("push_up", "푸시업", "가슴, 삼두", "가슴", "맨몸"),
+        exercise("sit_up", "싯업", "복근", "복근", "맨몸"),
+        exercise("squat", "스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "맨몸"),
+        exercise("barbell_squat", "백 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "바벨"),
+        exercise("front_squat", "프런트 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "바벨"),
+        exercise("goblet_squat", "고블릿 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "덤벨"),
+        exercise("smith_squat", "스미스 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "머신"),
     )
 
     val builtInExerciseIds: Set<String> = catalog.map { it.id }.toSet()

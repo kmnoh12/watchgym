@@ -63,7 +63,7 @@ class CameraSquatReviewTest {
         assertNull(saved.cameraMetrics); assertNotNull(saved.squatMetrics)
         assertEquals(saved, CalibrationReviewStore(app).load(clip.id).getOrThrow())
         assertTrue(saved.squatMetrics!!.cycles.single().pelvisDropTorsoLengths > 0)
-        assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve("squat").mode)
+        assertEquals(MotionFamily.CYCLE_AXIS_RETURN, ExerciseTrackingProfiles.resolve("squat").family)
         val count = store.saveCount(clip.id, 1, saved.revision).getOrThrow()
         CalibrationVideoRetention(app).discardVideo(clip.id, count.revision, 0).getOrThrow()
         assertEquals(saved.squatMetrics, store.load(clip.id).getOrThrow().squatMetrics)

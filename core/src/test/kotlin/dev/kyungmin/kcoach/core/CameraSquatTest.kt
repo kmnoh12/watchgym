@@ -3,12 +3,12 @@ package dev.kyungmin.kcoach.core
 import kotlin.test.*
 
 class CameraSquatTest {
-    @Test fun squatVariantsShareTheCameraRecipeWithoutPromotingTheWristPolicyOrChangingThe43OriginalExercises() {
-        assertEquals(43, ExerciseCapabilityMatrix.standardExerciseIds().size)
+    @Test fun squatVariantsShareTheCameraRecipeAndTheCycleAxisWristEngine() {
+        assertEquals(50, ExerciseCapabilityMatrix.standardExerciseIds().size)
         for (id in listOf("squat", "barbell_squat", "front_squat", "goblet_squat", "smith_squat")) {
             assertEquals(MeasurementRecipe.SQUAT, ExerciseMeasurementContracts.resolve(id).recipe)
             assertEquals(CameraMotion.SQUAT_KNEE_FLEXION, CameraCaptureGuide.forExercise(id, true).metric)
-            assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve(id).mode)
+            assertEquals(MotionFamily.CYCLE_AXIS_RETURN, ExerciseTrackingProfiles.resolve(id).family)
         }
     }
     private fun frame(ms: Long, bend: Double): CameraPoseFrame {
@@ -46,7 +46,7 @@ class CameraSquatTest {
         assertEquals(MusclePhase.ECCENTRIC, cycles.single().departurePhase)
         assertTrue(cycles.single().startNs >= 1_400_000_000L)
         assertTrue(CameraRepProposals.propose(frames.take(14), "squat", true).isEmpty())
-        assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve("squat").mode)
+        assertEquals(MotionFamily.CYCLE_AXIS_RETURN, ExerciseTrackingProfiles.resolve("squat").family)
     }
     @Test fun hiddenLegsOrALyingImageCannotConfirmTheStandingCandidate() {
         val standing = frame(0, 0.0); val guide = CameraCaptureGuide.forExercise("squat", true)

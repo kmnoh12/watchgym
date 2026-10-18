@@ -10,13 +10,13 @@ class ExerciseTrackingProfileTest {
     @Test
     fun everyCatalogExerciseResolvesToAnExplicitMotionContract() {
         val ids = ExerciseCapabilityMatrix.standardExerciseIds()
-        assertEquals(43, ids.size)
+        assertEquals(50, ids.size)
 
         val profiles = ids.map { exerciseId ->
             ExerciseTrackingProfiles.resolve(exerciseId)
         }
         assertEquals(ids.toSet(), profiles.map { it.exerciseId }.toSet())
-        assertEquals(36, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
+        assertEquals(43, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
         assertEquals(7, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
         profiles.filter { it.mode != TrackingMode.MANUAL_REQUIRED }.forEach { profile ->
             assertNotEquals(MotionFamily.UNOBSERVABLE_MANUAL, profile.family)
@@ -62,11 +62,10 @@ class ExerciseTrackingProfileTest {
     }
 
     @Test
-    fun lowerBodyTermsWinBeforePressAndCurlInference() {
+    fun machineLowerBodyTermsWinBeforePressAndCurlInference() {
         listOf(
             "hack_leg_press" to "핵 레그 프레스",
             "lying_leg_curl" to "라잉 레그 컬",
-            "goblet_squat" to "덤벨 고블릿 스쿼트",
         ).forEach { (id, name) ->
             val profile = ExerciseTrackingProfiles.resolve(id, name)
             assertEquals(TrackingMode.MANUAL_REQUIRED, profile.mode, id)

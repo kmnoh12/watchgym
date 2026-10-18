@@ -50,6 +50,12 @@ enum class MeasurementRecipe(
     SQUAT("스쿼트", MeasurementEngine.TRANSLATION,
         "카메라로 확인한 선 자세", "내려감 → 하단 전환 → 선 자세 복귀", MusclePhase.ECCENTRIC,
         setOf(11, 12, 23, 24, 25, 26, 27, 28), StartEvidence.CAMERA_BODY_POSE),
+    PUSH_UP("푸시업", MeasurementEngine.TRANSLATION,
+        "팔을 편 플랭크 자세", "내려감 → 하단 전환 → 팔을 편 자세 복귀", MusclePhase.ECCENTRIC,
+        setOf(11, 12, 13, 14, 15, 16, 23, 24)),
+    SIT_UP("싯업", MeasurementEngine.TRANSLATION,
+        "누운 자세", "상체 일으킴 → 전환 → 누운 자세 복귀", MusclePhase.CONCENTRIC,
+        setOf(11, 12, 23, 24, 25, 26)),
     ;
 
     /** Counting one observed wrist does not require the other arm or every posture metric. */
@@ -102,7 +108,11 @@ object ExerciseMeasurementContracts {
         val id = ExerciseMotionCatalog.normalizeExerciseId(exerciseId)
         return standard[id] ?: when (id) {
             "squat", "barbell_squat", "front_squat", "goblet_squat", "smith_squat" -> ExerciseMeasurementContract(
-                MeasurementRecipe.SQUAT, "전신 카메라 확인 필요. 워치 단독은 실측 검증 전 수동 입력.")
+                MeasurementRecipe.SQUAT, "전신 카메라 확인 필요. 워치는 손목 주기 신호로 자동 추정해요.")
+            "push_up" -> ExerciseMeasurementContract(MeasurementRecipe.PUSH_UP,
+                "맨몸 푸시업. 손목이 바닥에 고정돼 워치는 전완 기울기 변화를 읽어요. 카메라 보정으로 횟수를 확인하세요.")
+            "sit_up" -> ExerciseMeasurementContract(MeasurementRecipe.SIT_UP,
+                "누운 자세에서 상체를 일으키는 싯업. 카메라 보정으로 횟수를 확인하세요.")
             "high_row_machine", "standing_tbar_row" -> ExerciseMeasurementContract(
                 MeasurementRecipe.ROW, "기구의 손잡이 방향·피벗·몸통 지지를 확인해야 하는 추가 검증 대상.")
             "barbell_shoulder_press" -> ExerciseMeasurementContract(

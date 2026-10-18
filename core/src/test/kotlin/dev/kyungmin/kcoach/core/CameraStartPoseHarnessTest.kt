@@ -16,7 +16,7 @@ class CameraStartPoseHarnessTest {
      * Side-view exercises whose gate asks for far-side joints on purpose (squat: both legs and shoulders). Whether the model
      * really loses them in a side view is unproven; the field overlay (KCoachPose log) must show it before this gate changes.
      */
-    private val needsFieldData = setOf("squat")
+    private val needsFieldData = setOf("squat", "barbell_squat", "front_squat", "goblet_squat", "smith_squat", "push_up", "sit_up")
 
     private class Case(val id: String, val family: CameraPoseFamily, val guide: CameraCaptureGuide)
 

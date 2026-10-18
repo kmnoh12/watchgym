@@ -51,7 +51,11 @@ enum class CameraPoseFamily(
     LYING_ARMS_UP_SIDE(false, 90.0, 180.0 to 180.0),
     LYING_EXTENSION_SIDE(false, 90.0, 170.0 to 70.0),
     PULLOVER_SIDE(false, 90.0, 100.0 to 100.0),
-    SQUAT_SIDE(false, 4.0, -40.0 to 160.0, 2.0 to -2.0);
+    SQUAT_SIDE(false, 4.0, -40.0 to 160.0, 2.0 to -2.0),
+    // Plank: body almost horizontal, arms straight down to the floor.
+    PLANK_SIDE(false, 80.0, 0.0 to 0.0),
+    // Lying on the back with the knees bent, arms crossed forward.
+    SITUP_LYING_SIDE(false, 90.0, 90.0 to 90.0, 40.0 to -60.0);
 
     val lowerBody get() = leg != null
 }
@@ -101,6 +105,8 @@ object CameraPoseGuide {
             }
             MeasurementRecipe.EXTERNAL_ROTATION -> CameraPoseFamily.EXTERNAL_ROTATION_OBLIQUE
             MeasurementRecipe.SQUAT -> CameraPoseFamily.SQUAT_SIDE
+            MeasurementRecipe.PUSH_UP -> CameraPoseFamily.PLANK_SIDE
+            MeasurementRecipe.SIT_UP -> CameraPoseFamily.SITUP_LYING_SIDE
             MeasurementRecipe.MANUAL -> null
         }
     }

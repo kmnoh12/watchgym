@@ -12,14 +12,21 @@ enum class CameraMotion(val restDegrees: Double, val excursionDegrees: Double, v
     // Shoulder-driven lifts: the elbow barely moves, so the arm is measured at the shoulder.
     PULLOVER_REACH(150.0, 100.0, false),
     FLY_OPEN(145.0, 110.0, false),
-    FLY_CLOSED(105.0, 140.0, true);
+    FLY_CLOSED(105.0, 140.0, true),
+    // Side view: shoulder-hip-knee closes as the trunk comes up.
+    SITUP_HIP_FLEXION(125.0, 85.0, false);
 
     fun atRest(angle: Double) = if (increasing) angle <= restDegrees else angle >= restDegrees
     fun departed(angle: Double) = if (increasing) angle >= excursionDegrees else angle <= excursionDegrees
 
     companion object {
         fun forExercise(exerciseId: String, name: String = ""): CameraMotion? {
-            if (ExerciseMeasurementContracts.resolve(exerciseId).recipe == MeasurementRecipe.SQUAT) return SQUAT_KNEE_FLEXION
+            when (ExerciseMeasurementContracts.resolve(exerciseId).recipe) {
+                MeasurementRecipe.SQUAT -> return SQUAT_KNEE_FLEXION
+                MeasurementRecipe.PUSH_UP -> return ELBOW_FOLD
+                MeasurementRecipe.SIT_UP -> return SITUP_HIP_FLEXION
+                else -> Unit
+            }
             val profile = ExerciseTrackingProfiles.resolve(exerciseId, name)
             if (profile.mode == TrackingMode.MANUAL_REQUIRED) return null
             return when (profile.family) {
@@ -47,6 +54,7 @@ object UpperBodyPoseGeometry {
             CameraMotion.SHOULDER_RAISE, CameraMotion.PULLOVER_REACH -> listOf(elbow, shoulder, hip)
             CameraMotion.FLY_OPEN, CameraMotion.FLY_CLOSED -> listOf(elbow, shoulder, otherShoulder)
             CameraMotion.SQUAT_KNEE_FLEXION -> listOf(hip, knee, ankle)
+            CameraMotion.SITUP_HIP_FLEXION -> listOf(shoulder, hip, knee)
             else -> listOf(shoulder, elbow, wrist)
         }
         val value = angle(points, indices[0], indices[1], indices[2]) ?: return null
