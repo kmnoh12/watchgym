@@ -1,0 +1,161 @@
+{
+  "source_commit": "2546ae79584f1c0a05aabc27fd3e1f1c09604b06",
+  "note": "Relevant source snapshot only; not a full buildable repository. Reviewer brief itself added after this commit.",
+  "files": [
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/VerticalPressRepDetector.kt",
+      "bytes": 6388,
+      "sha256": "6ee068d28cc1a5d7fa8d2e1ee88f0e656d6f135f551ffa6f63c219a8f139b9fb"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/ProfiledMotionRepDetector.kt",
+      "bytes": 12995,
+      "sha256": "a62d60a43436abf3edd5e8342eaff46332e3e1368b01e7cbdfccfaa0cfddb3da"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/ExerciseMotionCatalog.kt",
+      "bytes": 8251,
+      "sha256": "f7595ac967240574ab96263a70b3590963665efc82a49357324bcab81d3bc9b8"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/ExerciseTrackingProfiles.kt",
+      "bytes": 5506,
+      "sha256": "dec3ce122ad67b20746327a94bf6c2f467ca19edcf9f603fc3375fd41e6c1c50"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/TrackingProfileSnapshot.kt",
+      "bytes": 3688,
+      "sha256": "067f3d3ace57c260f43682d3332a8a30a3b812b4dc6fbe482f2126b836e7303e"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/SetEndGate.kt",
+      "bytes": 1581,
+      "sha256": "c7db969396179857e04a6f42c139cdb116347f1613f958b2532bf24ba8f7639d"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/CapturePurpose.kt",
+      "bytes": 543,
+      "sha256": "120ed0cd56a47b591f5de1a24872c11eb2a134a9f506676014febdd0fd39728e"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/UpperBodyPoseCounter.kt",
+      "bytes": 5055,
+      "sha256": "463ebc114db4f18b76bc0bd0f8e179acca4305153897ae60803a62de3ff374da"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/CameraTargetCompletion.kt",
+      "bytes": 918,
+      "sha256": "b4a86fdffb53e0d25f01162774b425fd22bbbbc6edd2b803e7f949846b285400"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/PaperPeakRepAnalyzer.kt",
+      "bytes": 7472,
+      "sha256": "6d61d57e89faafe9d6c667f42d4bd725d3ce590c4c95f1e494906b1b00d4c461"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/SavitzkyGolayFilter.kt",
+      "bytes": 2643,
+      "sha256": "0dd83cfb160837125c17d411056e79898fd92ede906a8bbc9f1c7500e1c06d99"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/SensorCaptureFormat.kt",
+      "bytes": 8126,
+      "sha256": "589738163697e9329a7a9b17edefb8c37decdc7983614cbb2b6b66879ab15247"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/SensorRecordQuality.kt",
+      "bytes": 876,
+      "sha256": "2572813ec460bed2f43d456c6aed9a4cd6abde7cf3cd4ef94e99a5c9b9313495"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/VerticalPressRepDetectorTest.kt",
+      "bytes": 6377,
+      "sha256": "13b7b8f8a662a841467ca0fc61c7a591cc9d1ec657423d0057c3aafabb605ef2"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/VerticalPressReplayComparisonTest.kt",
+      "bytes": 4105,
+      "sha256": "0d0ffa9687ffb46efd1f441dcdf365c83d2a03587ecb7b3f1ceca879829551c2"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/VerticalPressTimingCandidate.kt",
+      "bytes": 6713,
+      "sha256": "8cde5136e405b06b55e8c51b4527241e1ff92eab935d5e237e0d4b2cabf12c3a"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/PressBoundaryDiagnosticTest.kt",
+      "bytes": 4294,
+      "sha256": "447b66f0301cf8b2673bdc63f8278fbeb5b43887c41032831b4032af4bb06deb"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/SelectedEvidenceReplayTest.kt",
+      "bytes": 3256,
+      "sha256": "effaafc282af6b39c2e66f2aea951e6483f24404b9c3b7fa167ae468784967c5"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/TrackingProfileSnapshotTest.kt",
+      "bytes": 4564,
+      "sha256": "fd0f20dbd9cf1b126def646c94209d62fa4249cadec879f634a2a2fd554ac3ef"
+    },
+    {
+      "path": "source/core/src/test/kotlin/dev/kyungmin/kcoach/core/CurrentDetectorEvaluationTest.kt",
+      "bytes": 11720,
+      "sha256": "eab5ff034671742dfbc55442a4d7eb3a245a500ff8bc164f832dd199652d0a25"
+    },
+    {
+      "path": "source/wear/src/main/kotlin/dev/kyungmin/kcoach/wear/WearWorkoutService.kt",
+      "bytes": 142067,
+      "sha256": "e3c198b291ce7d94d78acd30d8438481ce9ac7390230707654b2ecc9c4b198bd"
+    },
+    {
+      "path": "source/phone/src/main/kotlin/dev/kyungmin/kcoach/phone/PhoneSessionController.kt",
+      "bytes": 5871,
+      "sha256": "b64429609004e982aafee6d0d11d47ae21f11f24c232f938956981099f779495"
+    },
+    {
+      "path": "source/tools/mmfit_paper_replay.py",
+      "bytes": 7970,
+      "sha256": "658559576984758668e33dc3c7099bc0b954492d864d15a22be66396cdc073ac"
+    },
+    {
+      "path": "source/tools/test_mmfit_paper_replay.py",
+      "bytes": 1564,
+      "sha256": "245684ad4460f70177ec7307214e87eb8564b19ee03e981b35a962474c69f401"
+    },
+    {
+      "path": "source/tools/mmfit_convert.py",
+      "bytes": 2750,
+      "sha256": "86abe7b287789f0b8d58a1891709ab8e50dbd4d29a4f0fd02033ad6366847982"
+    },
+    {
+      "path": "source/tools/inspect_measurement_export.py",
+      "bytes": 13222,
+      "sha256": "4dd92a41008ddd187722f0caf35ff6ffc28ff4d29eb8f08de55fed0a81b8dc43"
+    },
+    {
+      "path": "source/docs/reviews/2026-10-17-vertical-press-engine.md",
+      "bytes": 5116,
+      "sha256": "2b6a14457c82f7c9b5e705767d4d4efce4b078eae698332bf7da12ac66d49efa"
+    },
+    {
+      "path": "source/docs/reviews/2026-10-19-smith-press-runtime-routing.md",
+      "bytes": 8734,
+      "sha256": "2061c32ea808a49da344e8d607243f08ed0ed2ec6c07f15642a553fec3393c52"
+    },
+    {
+      "path": "source/docs/reviews/2026-10-19-mmfit-paper-reproduction.md",
+      "bytes": 3394,
+      "sha256": "82cc56464b5d7e27171bc49116ebe1e66e5bd9f9f297358f3927f43e74219f2a"
+    },
+    {
+      "path": "source/docs/reviews/2026-10-19-mmfit-paper-sets.csv",
+      "bytes": 1207,
+      "sha256": "8831af752bc310892e892fef0d3a2cbe094bd7698968e7f54017f343672dca54"
+    },
+    {
+      "path": "source/core/src/main/kotlin/dev/kyungmin/kcoach/core/PhoneRepAnalyzer.kt",
+      "bytes": 19677,
+      "sha256": "3c8a2d33f411bd7668c33145df96e0c05a725ceca12ad458d04b9a54b895c7d9"
+    }
+  ]
+}

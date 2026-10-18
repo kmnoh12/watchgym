@@ -1,0 +1,20 @@
+{
+  "frozen_v4": {
+    "sets": 60,
+    "exact": 4,
+    "within_one": 8,
+    "mae": 4.833333333333333
+  },
+  "vertical_v1": {
+    "sets": 60,
+    "exact": 25,
+    "within_one": 55,
+    "mae": 0.6666666666666666
+  },
+  "timing_candidate_015": {
+    "sets": 60,
+    "exact": 13,
+    "within_one": 55,
+    "mae": 0.8666666666666667
+  }
+}
