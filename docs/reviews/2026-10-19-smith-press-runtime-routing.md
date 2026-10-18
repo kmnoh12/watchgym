@@ -35,3 +35,17 @@ Both reference videos were preprocessed with `claude-real-video`, transcription 
 An isolated copy of the causal v1 detector changed only the negative-lobe recovery fraction from 0.50 to 0.15. It was compared on the first export, then the unchanged candidate was replayed on the second. Both files retain 10 events. The first candidate's event delay versus v1 is approximately 140–220 ms; the second approximately 114–280 ms. This is a measured change in detector timing, not a measured improvement against manually reviewed return timestamps. Camera wrist-height records confirm motion continues after some existing completion markers, but no exact 20-rep video boundary truth was persisted.
 
 The temporary experiment source and local results remain under ignored `work/press-two-captures`; the candidate is NOT enabled in the runtime. Constants and the v1 algorithm ID are unchanged. A timing revision must receive a new algorithm version and preserve frozen v1 replay before it is enabled. Full return-to-start-position accuracy and weighted-workout overcounting remain unresolved.
+
+## Same 60-set MM-Fit comparison: timing candidate rejected
+
+Replayed the same converted MM-Fit 20 sessions / 60 dumbbell-shoulder-press sets, preserving the original label intervals and sensor samples. The recovery fraction was fixed at 0.15 before this run; no parameter search was performed on the 60 labels. Only `:core:test --tests '*VerticalPressReplayComparisonTest'` ran.
+
+| Detector | MAE (reps/set) | Exact total | Within one rep |
+| --- | ---: | ---: | ---: |
+| Frozen combined v4 | 4.833 | 4/60 (6.7%) | 8/60 (13.3%) |
+| Vertical v1, recovery 0.50 | 0.667 | 25/60 (41.7%) | 55/60 (91.7%) |
+| Timing candidate, recovery 0.15 | 0.867 | 13/60 (21.7%) | 55/60 (91.7%) |
+
+Relative to vertical v1, the timing candidate improves 0 sets, leaves 48 unchanged and worsens 12. Every changed set loses one counted rep: w04 sets 1/2/3; w07 sets 1/3; w11 set 1; w12 sets 2/3; w15 set 3; w17 set 3; w18 set 2; w19 set 2 (set numbering within each session's shoulder-press labels). Event closure near a label boundary needs separate investigation; no original interval was extended and no fabricated terminal samples were added to rescue a final rep.
+
+The unchanged 91.7% tolerance metric hides a reduction in exact totals and a worse MAE. Reject the 0.15 candidate for runtime adoption. The existing Smith-to-v1 routing fix is separate and remains unchanged. The comparison fixture is test-only and the result CSV includes every set. This is a previously explored benchmark, not an independent holdout or real Watch8 validation, and its count labels do not establish vibration timing at the physical return pose.
