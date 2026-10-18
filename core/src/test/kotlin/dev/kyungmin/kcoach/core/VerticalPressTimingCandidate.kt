@@ -18,6 +18,7 @@ internal class VerticalPressTimingCandidate(
     private val recovery: Double,
     private val profile: ExerciseTrackingProfile = ExerciseTrackingProfiles.resolve("dumbbell_shoulder_press"),
 ) {
+    val closedLobes = mutableListOf<String>()
     val maximumCycleNs: Long get() = profile.maximumRepMs * 1_000_000L
 
     private var lastNs: Long? = null
@@ -100,6 +101,8 @@ internal class VerticalPressTimingCandidate(
     private fun close(t: Long): ProfiledMotionRepEvent? {
         val valid = t - startNs in profile.minimumLobeMs * 1_000_000L..profile.maximumLobeMs * 1_000_000L &&
             area >= profile.minimumLobeDisplacement
+        val hadAscent = ascent != null
+        val cycleDuration = ascent?.let { (t-it.start)/1e6 }
         var result: ProfiledMotionRepEvent? = null
         if (valid && direction == 1) ascent = Ascent(startNs, t, area, peak, minimumMagnitude, maximumMagnitude)
         else if (valid && direction == -1 && ascent != null) {
@@ -115,6 +118,7 @@ internal class VerticalPressTimingCandidate(
             }
             ascent = null
         } else ascent = null
+        closedLobes += "$direction,$startNs,$t,$valid,$hadAscent,${result != null},${(t-startNs)/1e6},$area,$peak,$cycleDuration"
         direction = 0; quietNs = null
         return result
     }

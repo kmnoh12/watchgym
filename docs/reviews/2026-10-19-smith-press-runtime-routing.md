@@ -49,3 +49,17 @@ Replayed the same converted MM-Fit 20 sessions / 60 dumbbell-shoulder-press sets
 Relative to vertical v1, the timing candidate improves 0 sets, leaves 48 unchanged and worsens 12. Every changed set loses one counted rep: w04 sets 1/2/3; w07 sets 1/3; w11 set 1; w12 sets 2/3; w15 set 3; w17 set 3; w18 set 2; w19 set 2 (set numbering within each session's shoulder-press labels). Event closure near a label boundary needs separate investigation; no original interval was extended and no fabricated terminal samples were added to rescue a final rep.
 
 The unchanged 91.7% tolerance metric hides a reduction in exact totals and a worse MAE. Reject the 0.15 candidate for runtime adoption. The existing Smith-to-v1 routing fix is separate and remains unchanged. The comparison fixture is test-only and the result CSV includes every set. This is a previously explored benchmark, not an independent holdout or real Watch8 validation, and its count labels do not establish vibration timing at the physical return pose.
+
+## Boundary and state-machine diagnosis
+
+A focused diagnostic preserves the strict benchmark score and separately reads genuine pre/post samples. No fabricated samples or synthetic end-of-set completion are used.
+
+Strict vertical v1 errors are 25 exact, 30 undercounts by one, 5 undercounts by two, and no overcounts. The 0.15 candidate has 13 exact, 42 undercounts by one and 5 undercounts by two. In the v1 diagnostic, 24 sets emit a cycle that started within the label but ends in the observed next two seconds. Those tail events are not added to the strict score; they are not manually verified physical returns. Counting them diagnostically would give 44/60 exact, which is not an improved detector accuracy claim.
+
+All 12 sets that lose an additional event with the 0.15 candidate have a pending final cycle at the label end. Seven close in the real next two seconds. Of the other five, w04 sets 1/2 and w07 set 3 hit the existing 3000 ms lobe duration limit and discard an ascent-backed negative lobe (3002, 3005 and 3011 ms respectively). w12 sets 2/3 do not close within the observed two-second diagnostic horizon. Raw tail data exists for all five; absence of a closure is not absence of data.
+
+Prefeeding two seconds of arbitrary recorded context and then resetting counting worsens strict totals substantially (v1 6/60 exact; candidate 3/60); this must not be adopted as a blanket initialization fix. It is not a verified stationary-preparation sequence.
+
+The next engine experiment must couple return-phase state, bounded final-cycle grace, setup-motion rejection and consistent timeout semantics. Relaxing the recovery fraction alone is rejected. Increasing a timeout alone is also not established as correct because rack/put-down motion can contaminate completion. Keep count matching, return-phase timing and false positives as separate evaluation criteria. MM-Fit label boundaries need to be understood independently before claiming a physical return was missed; delayed events beyond labels must not silently inflate strict metrics. The screenshot's 24-count real workout remains separate evidence not supplied as a raw session in the two paired exports.
+
+Reproduction: run only `:core:test --tests '*PressBoundaryDiagnosticTest'` with the existing `KCOACH_MMFIT_DIR`. CSVs distinguish strict counts, observed-tail closures, pending state and closed-lobe reasons. This investigation makes no production detector or timeout change.
