@@ -22,13 +22,15 @@ class SelectedEvidenceReplayTest {
             val oldDetector = ProfiledMotionRepDetector(frozen)
             val newDetector = ProfiledMotionRepDetector(current)
             val poseCandidate = ReturnToPoseRepDetector(current.minimumRepMs)
+            val verticalCandidate = VerticalPressRepDetector()
             val events = linkedMapOf<String, MutableList<ProfiledMotionRepEvent>>(
-                "frozen" to mutableListOf(), "current" to mutableListOf(), "pose_candidate_unadopted" to mutableListOf())
+                "frozen" to mutableListOf(), "current" to mutableListOf(), "pose_candidate_unadopted" to mutableListOf(), "vertical_candidate_unadopted" to mutableListOf())
             original.records.forEach { record ->
                 val sample = SensorRecordQuality.forCounting(record)
                 oldDetector.add(sample)?.let { events.getValue("frozen") += it }
                 newDetector.add(sample)?.let { events.getValue("current") += it }
                 poseCandidate.add(sample)?.let { events.getValue("pose_candidate_unadopted") += it }
+                verticalCandidate.add(sample)?.let { events.getValue("vertical_candidate_unadopted") += it }
             }
             val t0 = original.records.first().sample.timestampNs
             File("build/selected-evidence-replay.csv").writeText(buildString {

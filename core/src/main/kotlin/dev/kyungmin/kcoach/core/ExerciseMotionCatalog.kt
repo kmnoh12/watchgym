@@ -105,7 +105,7 @@ object ExerciseMotionCatalog {
         binding("ez_lying_extension", "이지바 라잉 익스텐션", MotionFamily.PRESS_RETURN),
         binding("external_rotation", "케이블 외회전", MotionFamily.FOREARM_ROTATION, CapabilityTier.C_PERSONALIZED_AUTO_COUNT_BETA),
         binding("crossover_reverse_fly", "크로스오버 리버스 플라이", MotionFamily.MULTI_AXIS_RETURN),
-        binding("smith_shoulder_press", "스미스 숄더프레스", MotionFamily.PRESS_RETURN),
+        binding("smith_shoulder_press", "스미스 숄더프레스", MotionFamily.VERTICAL_PRESS_RETURN),
         binding("machine_shoulder_press", "머신 숄더프레스", MotionFamily.PRESS_RETURN),
         binding("dumbbell_shoulder_press", "덤벨 숄더프레스", MotionFamily.VERTICAL_PRESS_RETURN),
         binding("dumbbell_lateral_raise", "덤벨 레터럴 레이즈", MotionFamily.MULTI_AXIS_RETURN),

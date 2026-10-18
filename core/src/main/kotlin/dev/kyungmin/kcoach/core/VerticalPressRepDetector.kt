@@ -8,7 +8,7 @@ import kotlin.math.sqrt
 data class VerticalPressSignal(val timestampNs: Long, val acceleration: Double, val velocityProxy: Double)
 
 /**
- * Causal vertical press candidate, v1. Only the registered dumbbell shoulder press uses it.
+ * Causal vertical press candidate, v1. Registered dumbbell and Smith shoulder presses use it.
  * Gravity direction/bias: 2.5 s time constant; leaky integration: 0.75 s; smoothing: 80 ms.
  * The signed velocity proxy preserves ascent/return, but is NOT physical velocity or joint ROM.
  * No camera, target count, set-length percentile, future samples, or end-of-set completion.

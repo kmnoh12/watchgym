@@ -30,7 +30,7 @@ object TrackingProfileSnapshot {
             }
             val generic = ExerciseTrackingProfiles.resolve(p.exerciseId, p.label)
             // Only explicitly migrated exercises may replay their old combined-signal press engine.
-            val migratedPress = p.exerciseId == "dumbbell_shoulder_press" &&
+            val migratedPress = p.exerciseId in setOf("dumbbell_shoulder_press", "smith_shoulder_press") &&
                 generic.family == MotionFamily.VERTICAL_PRESS_RETURN ||
                 p.exerciseId == "rope_extension" && generic.family == MotionFamily.FLEXION_EXTENSION
             val historicalPress = migratedPress &&

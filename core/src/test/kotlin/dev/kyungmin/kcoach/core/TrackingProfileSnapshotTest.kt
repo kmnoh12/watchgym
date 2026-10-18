@@ -25,12 +25,14 @@ class TrackingProfileSnapshotTest {
         }
     }
     @Test fun `old shoulder press snapshots replay old family while new captures use vertical engine`() {
-        val current = ExerciseTrackingProfiles.resolve("dumbbell_shoulder_press")
-        assertEquals(MotionFamily.VERTICAL_PRESS_RETURN, current.family)
-        for (version in listOf("v3", "v4")) {
-            val old = current.copy(family = MotionFamily.PRESS_RETURN, signal = TrackingSignal.COMBINED_MOTION,
-                id = "press-return-family-$version")
-            assertEquals(old, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(old)))
+        for (exerciseId in listOf("dumbbell_shoulder_press", "smith_shoulder_press")) {
+            val current = ExerciseTrackingProfiles.resolve(exerciseId)
+            assertEquals(MotionFamily.VERTICAL_PRESS_RETURN, current.family, exerciseId)
+            for (version in listOf("v3", "v4")) {
+                val old = current.copy(family = MotionFamily.PRESS_RETURN, signal = TrackingSignal.COMBINED_MOTION,
+                    id = "press-return-family-$version")
+                assertEquals(old, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(old)))
+            }
         }
     }
     @Test fun `all configured detector settings survive serialization`() {
