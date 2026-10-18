@@ -13,6 +13,6 @@ class VerticalRepAmplitudeTest {
     @Test
     fun aSmallArmLiftIsRefused() {
         assertFalse(VerticalRepAmplitude.accepts(event(0.08)))
-        assertFalse(VerticalRepAmplitude.accepts(event(0.29)))
+        assertFalse(VerticalRepAmplitude.accepts(event(0.23)))
     }
 }
