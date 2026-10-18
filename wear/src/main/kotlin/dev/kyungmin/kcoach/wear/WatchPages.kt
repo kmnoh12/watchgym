@@ -248,7 +248,7 @@ internal class ZoneBar(context: Context) : View(context) {
         val oy = (height - 432f * k) / 2f
         canvas.save(); canvas.translate(ox, oy); canvas.scale(k, k)
         val oval = RectF(22f, 22f, 410f, 410f)
-        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND; paint.strokeWidth = 7f
+        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND; paint.strokeWidth = 10f
         for (i in 0 until 5) {
             paint.color = WatchWorkoutFace.zoneColor(ZONE_SAMPLE_BPM[i])
             paint.alpha = (64 + 191 * emphasis[i]).roundToInt()
