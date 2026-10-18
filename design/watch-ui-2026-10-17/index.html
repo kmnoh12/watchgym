@@ -392,7 +392,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="abs metrics hr"><div><span class="h" style="--hc:var(--z2);--beat:0.536s"><svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span><span class="v">112</span><span class="u">bpm</span></div></div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">1 · 측정 중</span><b>숫자 하나가 주인공, 아래는 심박만</b><span>이름 아래 한 줄에 "1세트 · 20kg · 자동 측정"을 모았어요(세트와 무게는 흰색). 그래서 아래는 심박수 하나만 남고 10% 키웠고 단위 bpm을 붙였어요(숫자 34에서 37, 하트 32에서 36). 아래로 끌면 심박 장이 나오는 게 바로 보여요. 횟수가 늘 때마다 숫자가 위로 슥 밀려 올라가고 새 숫자가 아래에서 올라와요(0.2초, 일정한 속도, 튕김 없음). 시안은 8, 9, 10, 11, 12, 8을 반복해서 보여줘요. 링도 같이 차올라요. 림 전체가 목표 횟수까지 차오르는 진행 링이 돼요. 큰 횟수는 민트, 무게와 심박은 한 줄로 내렸고, 심박은 속이 꽉 찬 하트로 그리고 지금 존 색을 입혀요. 하트는 실제 심박수 주기로 뛰어요(112bpm이면 0.54초에 한 번). 하트는 부드럽게 커졌다 작아지는 방식으로 정했어요. 크기 두 개를 딱 끊어서 바꾸는 방식은 배터리가 문제가 될 때를 위한 비상용이에요. 단위는 작고 흐리게 둬서 읽는 순서가 생겨요.</span></div>
+  <div class="cap"><span class="tag">1 · 측정 중</span><b>숫자 하나가 주인공, 아래는 심박만</b><span>큰 횟수 하나가 주인공, 아래는 심박수만. 숫자는 0.2초에 위로 밀려 올라가고 링도 같이 차요. 하트는 실제 심박 주기로 뜁니다.</span></div>
 </div>
 
 <!-- 2 목표 초과 -->
@@ -407,7 +407,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="abs metrics hr"><div><span class="h" style="--hc:var(--z3);--beat:0.508s"><svg class="heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></span><span class="v">118</span><span class="u">bpm</span></div></div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">2 · 목표 초과 (1과 같은 배치)</span><b>링과 숫자가 같이 색을 바꿔요</b><span>목표를 넘으면 링이 한 바퀴 다 차고, 넘은 횟수만큼 12시부터 다시 한 겹 더 쌓여요. 시안은 11회에서 12회(목표를 채운 순간), 13회, 14회로 올라갔다가 다시 11회로 돌아오는 장면을 반복해요. 12회까지는 세이지 링이 한 줄로 이어져 한 바퀴가 완성되고, 13회로 넘어가는 0.18초 동안 숫자가 올라가는 것과 똑같이 링 전체가 부드럽지만 아주 빠르게 앰버로 바뀌고, 같은 순간 진한 앰버 겹이 12시부터 1칸 자라요. 링이 숫자보다 늦게 따라오지 않아요. 겹친 구간은 더 진한 앰버로 보여요(13/12면 1시 방향까지). 숫자도 주황으로 바뀌어요. 글자 "목표 초과"도 같이 떠서 색을 못 보는 사람도 알 수 있어요. 빨강은 오류와 삭제용으로 아껴요.</span></div>
+  <div class="cap"><span class="tag">2 · 목표 초과 (1과 같은 배치)</span><b>링과 숫자가 같이 색을 바꿔요</b><span>목표를 넘으면 링이 한 바퀴 다 차고 앰버로 바뀌어요. 넘은 횟수만큼 12시부터 한 겹 더 쌓이고, 숫자도 주황이 되며 '목표 초과' 글자가 뜹니다.</span></div>
 </div>
 
 <!-- 3 저장 -->
@@ -420,7 +420,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="abs sub"><b>12회</b> · <b>20kg</b></div>
     <div class="abs rec">최고 중량 갱신</div>
   </div></div>
-  <div class="cap"><span class="tag">3 · 세트 완료 (3.5초)</span><b>멈춘 숫자와 끝난 세트를 구별</b><span>세트가 끝나면 체크와 "1세트 완료"이 잠깐 떠서 기록이 남았다는 걸 알려줘요. 기록 갱신이 있을 때만 맨 아래에 한 줄이 붙어요. 소리와 긴 애니메이션은 없고, 지나가면 휴식 화면으로 넘어가요.</span></div>
+  <div class="cap"><span class="tag">3 · 세트 완료 (3.5초)</span><b>멈춘 숫자와 끝난 세트를 구별</b><span>체크와 '1세트 완료'가 3.5초 떠서 기록이 남았음을 알려줘요. 기록 갱신 때만 아래 한 줄이 붙고, 지나가면 휴식 화면으로 넘어갑니다.</span></div>
 </div>
 
 <!-- 4a 휴식 -->
@@ -434,37 +434,9 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="pb r"><svg class="ic" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z" fill="currentColor"/><path d="M18.5 5v14"/></svg>건너뛰기</div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">4a · 휴식</span><b>막대를 크게, 버튼은 한 줄에 둘</b><span>지금 휴식 화면에서 "휴식 · 목표" 줄, 다음 세트 카드, "다음 세트 시작" 글자를 뺐어요. 그 자리에 숫자는 126에서 108로 살짝 줄이고 대신 굵게(Bold) 해서 또렷하게 했어요. 10초 막대는 높이 48에서 80으로, 글자를 26에서 46으로 키우고, 화면 정중앙(216)보다 아주 조금 아래(가운데 선 222)로 올리고 가로를 308에서 336으로 넓혔어요(노브는 높이 68, 글자 36). 막대를 밀거나 양끝 −·+를 누르는 방식은 그대로예요. 아래의 정지·건너뛰기는 높이를 52에서 70으로 키우고 두 버튼 사이를 22로 벌려서, 막대 바로 밑으로 끌어올려 엄지로 누르기 쉬워요. 정지는 누르면 시간이 멈추고(4-1), 건너뛰기는 휴식을 끝내고 바로 다음 세트로 가요. 위 화살표는 세트 편집(다음 세트가 먼저 열려요), 아래 화살표는 심박 장이에요.</span></div>
+  <div class="cap"><span class="tag">4 · 휴식</span><b>막대를 크게, 버튼은 한 줄에 둘</b><span>±10초 막대와 정지·건너뛰기 버튼을 크게 키워 엄지로 누르기 쉽게. 위 화살표는 세트 편집, 아래 화살표는 심박 장.</span></div>
 </div>
 
-<!-- 4b 휴식 -->
-<div class="item">
-  <div class="watch"><div class="face s4 rv">
-    <svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#FFDE70" stroke-opacity="1" stroke-width="7" stroke-linecap="round" stroke-dasharray="880 1313" transform="rotate(-90 216 216)"/></svg>
-    <div class="abs clock">02:05</div>
-    <div class="abs num big" style="top:calc(var(--u)*120);font-size:calc(var(--u)*86)">0:45</div>
-    <div class="sq" style="left:calc(var(--u)*46);top:calc(var(--u)*118);width:calc(var(--u)*84);height:calc(var(--u)*100)"><b>−</b><span>10초</span></div>
-    <div class="sq" style="left:calc(var(--u)*302);top:calc(var(--u)*118);width:calc(var(--u)*84);height:calc(var(--u)*100)"><b>+</b><span>10초</span></div>
-    <div class="pb" style="left:calc(var(--u)*56);top:calc(var(--u)*262);width:calc(var(--u)*156);height:calc(var(--u)*66);font-size:calc(var(--u)*26)"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>정지</div>
-    <div class="pb" style="left:calc(var(--u)*220);top:calc(var(--u)*262);width:calc(var(--u)*156);height:calc(var(--u)*66);font-size:calc(var(--u)*26)"><svg class="ic" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z" fill="currentColor"/><path d="M18.5 5v14"/></svg>건너뛰기</div>
-    <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
-  </div></div>
-  <div class="cap"><span class="tag">4b · 휴식</span><b>숫자 양옆에 큰 ±, 아래 버튼도 크게</b><span>숫자를 86으로 줄이고 양옆에 84×100짜리 ± 칸을 뒀어요. 누르는 칸이 가장 커서 땀난 손에도 잘 눌려요. 대신 막대로 밀어서 조절하는 방식은 없어지고, 베젤은 그대로 10초씩이에요. 정지·건너뛰기는 높이 66, 글자 26의 큰 버튼 둘이에요.</span></div>
-</div>
-
-<!-- 4c 휴식 -->
-<div class="item">
-  <div class="watch"><div class="face s4 rv">
-    <svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#FFDE70" stroke-opacity="1" stroke-width="7" stroke-linecap="round" stroke-dasharray="880 1313" transform="rotate(-90 216 216)"/></svg>
-    <div class="abs clock">02:05</div>
-    <div class="abs num big">0:45</div>
-    <div class="half" style="left:calc(var(--u)*66);top:calc(var(--u)*216);width:calc(var(--u)*146);height:calc(var(--u)*84);border-radius:calc(var(--u)*22) calc(var(--u)*6) calc(var(--u)*6) calc(var(--u)*22)">−10</div>
-    <div class="half" style="left:calc(var(--u)*220);top:calc(var(--u)*216);width:calc(var(--u)*146);height:calc(var(--u)*84);border-radius:calc(var(--u)*6) calc(var(--u)*22) calc(var(--u)*22) calc(var(--u)*6)">+10</div>
-    <div class="splitp" style="left:calc(var(--u)*86);top:calc(var(--u)*316);width:calc(var(--u)*260);height:calc(var(--u)*54)"><div><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>정지</div><div><svg class="ic" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z" fill="currentColor"/><path d="M18.5 5v14"/></svg>건너뛰기</div></div>
-    <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
-  </div></div>
-  <div class="cap"><span class="tag">4c · 휴식</span><b>−10 / +10을 반으로, 버튼은 한 알약</b><span>10초 조절을 막대 대신 −10, +10 두 칸으로 나눴어요(높이 84, 글자 40). 숫자는 원래 크기를 지켜요. 정지와 건너뛰기는 가운데 선으로 나뉜 한 알약이라 자리를 가장 적게 쓰고, 그만큼 숫자와 ± 칸이 위로 올라가요.</span></div>
-</div>
 
 <!-- 4-1 휴식 일시정지 (움직이는 시안) -->
 <div class="item">
@@ -478,7 +450,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="pb r"><svg class="ic" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z" fill="currentColor"/><path d="M18.5 5v14"/></svg>건너뛰기</div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg><svg class="chev d an-chd" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">4-1 · 정지 누를 때 (4a 기준, 반복 재생)</span><b>눌리고, 계속으로 바뀌고, 숫자가 작아지며 흰색이 돼요</b><span>이 화면은 저절로 반복해서 움직여요(버튼을 눌러도 돼요). ① 정지 버튼이 140ms 동안 살짝 눌려요(93%로 작아지고 어두워져요). ② 바로 이어서 340ms 동안 한꺼번에 바뀌어요. 버튼은 노란 "계속"으로, 숫자는 85%로 작아지며 12 내려가고 노랑에서 흰색으로, 링은 흐려지고, 맨 위에 "휴식 · 일시정지"가 떠요. ±10초 막대는 흐려지고 아래 화살표는 사라져요. 숫자는 크기를 바꾸지 않고 비율로 줄여서 끊김 없이 움직여요. 계속을 누르면 같은 순서로 거꾸로 돌아가요. 움직임 줄이기 설정에서는 애니메이션 없이 바로 바뀌어요.</span></div>
+  <div class="cap"><span class="tag">4-1 · 정지 누를 때 (반복 재생)</span><b>눌리고, 계속으로 바뀌고, 숫자가 작아지며 흰색이 돼요</b><span>정지를 누르면 버튼이 눌렸다가(140ms) '계속'·흰색 작은 숫자·'휴식 · 일시정지'로 바뀌어요(340ms). ±막대는 흐려지고 아래 화살표는 사라집니다.</span></div>
 </div>
 
 <!-- 4-2 휴식 중 편집 -->
@@ -491,7 +463,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="edrow" style="top:calc(var(--u)*238)"><b class="eb s">−5</b><b class="eb s">−</b><div class="ev"><span class="n">20</span><span class="k">kg</span></div><b class="eb s">+</b><b class="eb s">+5</b></div>
     <svg class="chev d" viewBox="0 0 24 12"><path d="M4 2.5L12 9l8-6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">4-2 · 휴식 중 편집</span><b>방금 세트도 다음 세트도 여기서</b><span>휴식 화면에서 아래로 끌면 나와요. 위의 두 칸 막대로 "방금 1세트"와 "다음 2세트"를 고르고(열리면 다음 세트가 먼저 선택돼 있어요), 아래 −5 − [값] + +5로 횟수와 무게를 고쳐요. 가운데 값을 누르면 숫자 키패드가 떠요. 고치면 바로 저장돼서 저장 버튼은 없어요. 휴식 시간은 계속 흘러가고, 위로 밀면 휴식 화면으로 돌아와요.</span></div>
+  <div class="cap"><span class="tag">4-2 · 휴식 중 편집</span><b>방금 세트도 다음 세트도 여기서</b><span>휴식 중 아래로 끌면 나와요. '방금 세트'·'다음 세트'를 골라 횟수·무게를 −5 − + +5로 고치면 바로 저장. 휴식 시간은 계속 흘러갑니다.</span></div>
 </div>
 
 <!-- 5 보조 -->
@@ -507,7 +479,7 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     </div>
     <svg class="chev u" viewBox="0 0 24 12"><path d="M4 9.5L12 3l8 6.5"/></svg>
   </div></div>
-  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>운동 중에 보지 않아도 되는 정보는 한 화면으로 모았어요. 심박 구간은 다섯 칸이고 현재 칸만 진하게 켜지고 심박 숫자와 ZONE 글자도 그 색이에요. 색은 ZONE 1 회청, 2 파랑, 3 초록, 4 주황, 5 빨강이에요. 기기가 주지 않는 값은 채우지 않아요(칼로리는 아직 넣지 않았어요).</span></div>
+  <div class="cap"><span class="tag">5 · 보조 화면</span><b>위로 밀면 나오는 숫자들 (아래쪽 장)</b><span>안 봐도 되는 정보 모음: 심박 구간(현재 칸만 켜짐), 운동 시간, 완료 세트. 위로 밀면 나오는 아래쪽 장.</span></div>
 </div>
 
 <!-- 6 세트 편집 -->
@@ -520,37 +492,37 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <div class="edrow r2"><b class="eb s">−5</b><b class="eb s">−</b><div class="ev"><span class="n">20</span><span class="k">kg</span></div><b class="eb s">+</b><b class="eb s">+5</b></div>
     <div class="btn p">8회로 세트 마치기</div>
   </div></div>
-  <div class="cap"><span class="tag">6 · 세트 편집</span><b>고치는 곳과 끝내는 곳이 한 장</b><span>아래로 끌면 나오는 위쪽 장이에요. 횟수와 무게 줄마다 −5 − [값] + +5가 있어요. −, +는 1씩, −5, +5는 5씩이고 길게 누르면 빠르게 움직여요. 가운데 값을 누르면 워치 숫자 키패드가 떠서 직접 입력해요(−5~+5로 모자란 사람용). 맨 아래 큰 민트 버튼 하나로 지금 횟수로 세트를 끝내요. 글자는 고친 횟수를 따라가요(8회 → 9회로 세트 마치기). 이 장에 들어오는 순간 횟수 세기는 멈추고, 가운데 화면으로 돌아가면 고친 횟수에서 이어서 세요. 템포 알림 끄기는 뺐어요(폰 설정으로).</span></div>
+  <div class="cap"><span class="tag">6 · 세트 편집</span><b>고치는 곳과 끝내는 곳이 한 장</b><span>횟수·무게 줄마다 −5 − + +5 (−/+는 1씩, 길게 누르면 빠르게). 가운데 값을 누르면 숫자 키패드. 맨 아래 민트 버튼 하나로 지금 횟수로 세트 종료.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face rB"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#76DBB9" stroke-width="7" stroke-linecap="round" stroke-dasharray="1313 1313" transform="rotate(-90 216 216)"/></svg><div class="abs clock">02:04</div><div class="abs lab">최고 중량 갱신</div><div class="bar b0"></div><div class="bar b1"></div><div class="abs bv0">60</div><div class="abs bv1">62.5<small>kg</small></div><div class="abs bl0">이전</div><div class="abs bl1">오늘</div><div class="abs dl2"><svg viewBox="0 0 24 24" class="upi"><path d="M12 19V6M6 11.5l6-6 6 6"/></svg>+2.5kg</div><div class="abs ex2">벤치 프레스 · 1세트 완료</div></div></div>
-  <div class="cap"><span class="tag">7 · 세트 직후 · 최고 중량 갱신</span><b>이전과 지금을 막대로 비교</b><span>이전 최고와 오늘 값을 막대 두 개로 나란히 놓아서 올라간 것이 눈으로 바로 보여요. 오늘 막대만 세이지, 이전 막대는 흐려요. 가운데 아래에 차이를 적어요.</span></div>
+  <div class="cap"><span class="tag">7 · 세트 직후 · 최고 중량 갱신</span><b>이전과 지금을 막대로 비교</b><span>이전 최고와 오늘을 막대 두 개로 비교. 오늘 막대만 세이지, 차이는 아래에.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face rE"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#76DBB9" stroke-width="7" stroke-linecap="round" stroke-dasharray="1313 1313" transform="rotate(-90 216 216)"/></svg><div class="abs clock">02:04</div><div class="abs lab">횟수 갱신</div><div class="abs wt">62.5kg</div><div class="abs num big"><span>11</span><i>회</i></div><div class="dotrow"><i class="was" style="left:calc(var(--u)*87.5)"></i><i class="was" style="left:calc(var(--u)*111.5)"></i><i class="was" style="left:calc(var(--u)*135.5)"></i><i class="was" style="left:calc(var(--u)*159.5)"></i><i class="was" style="left:calc(var(--u)*183.5)"></i><i class="was" style="left:calc(var(--u)*207.5)"></i><i class="was" style="left:calc(var(--u)*231.5)"></i><i class="was" style="left:calc(var(--u)*255.5)"></i><i class="was" style="left:calc(var(--u)*279.5)"></i><i class="was" style="left:calc(var(--u)*303.5)"></i><i class="on" style="left:calc(var(--u)*327.5)"></i></div><div class="abs pv2">이전 10회 · +1회</div><div class="abs ex">벤치 프레스 · 1세트 완료</div></div></div>
-  <div class="cap"><span class="tag">8 · 세트 직후 · 같은 무게 횟수 갱신</span><b>지난번 10칸에 한 칸 더</b><span>점 열한 개가 횟수예요. 지난번까지의 열 개는 흐리고 오늘 늘어난 한 개만 세이지로 켜져요. 숫자는 그 위에 크게 보여요.</span></div>
+  <div class="cap"><span class="tag">8 · 세트 직후 · 같은 무게 횟수 갱신</span><b>지난번 10칸에 한 칸 더</b><span>점 열한 개가 횟수. 지난번 열 개는 흐리고 늘어난 한 개만 세이지.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face cal2"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/></svg><div class="orbwrap"><svg class="orb" viewBox="0 0 220 220"><circle cx="110" cy="110" r="100" fill="none" stroke="#1F1F1D" stroke-width="6"/><circle cx="110" cy="110" r="100" fill="none" stroke="#76DBB9" stroke-width="6" stroke-linecap="round" stroke-dasharray="415 628" transform="rotate(-90 110 110)" class="orbprog"/></svg><span class="orbwin"><span class="orbstrip"><span>3</span><span>2</span><span>1</span><span>3</span></span></span></div><div class="abs clock">02:10</div><div class="abs lab3">보정</div><div class="abs msg2">시작 자세로 가만히 있어요</div><div class="abs foot"><svg viewBox="0 0 24 24" class="cam"><rect x="3" y="7" width="14" height="10" rx="2"/><path d="M17 11l4-2.5v7L17 13"/></svg>폰 카메라 촬영 중</div></div></div>
-  <div class="cap"><span class="tag">9 · 보정 · 준비</span><b>숫자가 줄어드는 원</b><span>가운데 원이 줄어들고 숫자는 운동 중 횟수처럼 위로 슥 올라가며 3, 2, 1로 바뀌어요. 위에 "보정", 아래에 한 줄 안내, 맨 아래에 폰이 촬영 중이라는 표시(카메라 아이콘)가 있어요.</span></div>
+  <div class="cap"><span class="tag">9 · 보정 · 준비</span><b>숫자가 줄어드는 원</b><span>원이 줄어들며 3·2·1 카운트다운. 맨 아래 '폰 카메라 촬영 중' 표시.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face cal3"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#76DBB9" stroke-width="7" stroke-linecap="round" stroke-dasharray="788 1313" transform="rotate(-90 216 216)" class="progress5"/></svg><div class="abs clock">02:10</div><div class="abs lab3">보정 · 목표 5회</div><div class="abs count"><span class="win"><span class="strip"><span class="d">1</span><span class="d">2</span><span class="d">3</span><span class="d">4</span><span class="d">5</span><span class="d">1</span></span></span><span class="of">/ 5회</span></div><div class="segrow"><i></i><i></i><i></i><i></i><i></i></div><div class="abs msg2" style="top:calc(var(--u)*326)">평소처럼 천천히 해요</div><div class="abs foot" style="top:calc(var(--u)*364)"><svg viewBox="0 0 24 24" class="cam"><rect x="3" y="7" width="14" height="10" rx="2"/><path d="M17 11l4-2.5v7L17 13"/></svg>폰 카메라 촬영 중</div></div></div>
-  <div class="cap"><span class="tag">10 · 보정 · 측정</span><b>횟수와 남은 칸</b><span>큰 숫자가 지금까지 센 횟수이고(운동 중과 같이 숫자가 위로 슥 올라가며 바뀌어요), 아래 다섯 칸과 림 링이 목표 5회 중 어디까지 왔는지 따라서 차올라요. 시안은 1회부터 5회까지 반복해서 보여줘요. 평소 운동 화면과 같은 모양이라 낯설지 않아요.</span></div>
+  <div class="cap"><span class="tag">10 · 보정 · 측정</span><b>횟수와 남은 칸</b><span>큰 숫자는 센 횟수, 다섯 칸과 링이 목표 5회 진행을 표시. 운동 화면과 같은 모양.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face cal4"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#76DBB9" stroke-width="7" stroke-linecap="round" stroke-dasharray="1313 1313" transform="rotate(-90 216 216)"/></svg><div class="abs clock">02:12</div><div class="abs ck"><svg class="pay" viewBox="0 0 104 104"><circle class="pc" cx="52" cy="52" r="46" pathLength="1"/><path class="pk" d="M31 54.5l14.5 14.5L74 38" pathLength="1"/></svg></div><div class="abs h1">보정 완료</div><div class="cmp2"><div><span class="v">5회</span><span class="k">센서</span></div><i></i><div><span class="v">5회</span><span class="k">확인</span></div></div><div class="abs ok">일치</div><div class="abs hint2">폰에서 결과를 확인해요</div></div></div>
-  <div class="cap"><span class="tag">11 · 보정 · 완료</span><b>센서와 확인이 맞았는지</b><span>체크와 "보정 완료", 센서가 센 횟수와 폰에서 확인한 횟수를 나란히 놓아요. 두 값이 같으면 "일치"가 붙어요. 결과는 폰에서 봐요.</span></div>
+  <div class="cap"><span class="tag">11 · 보정 · 완료</span><b>센서와 확인이 맞았는지</b><span>센서 횟수와 폰 확인 횟수를 나란히. 같으면 '일치'. 결과는 폰에서.</span></div>
 </div>
 
 <div class="item">
   <div class="watch"><div class="face res2"><svg class="ring" viewBox="0 0 432 432"><circle cx="216" cy="216" r="209" fill="none" stroke="#1B1B1A" stroke-width="7"/><circle cx="216" cy="216" r="209" fill="none" stroke="#76DBB9" stroke-width="7" stroke-linecap="round" stroke-dasharray="1313 1313" transform="rotate(-90 216 216)"/></svg><div class="abs clock">02:48</div><div class="abs t1"><svg viewBox="0 0 24 24" class="chk"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-7"/></svg>운동 완료</div><div class="abs num time">42:10</div><div class="abs tk">운동 시간</div><div class="m3"><div><span class="v">18</span><span class="k">세트</span></div><i></i><div><span class="v">8,420</span><span class="k">볼륨 kg</span></div><i></i><div><span class="v">121</span><span class="k">평균 심박</span></div></div><div class="abs rc"><svg viewBox="0 0 24 24" class="upi"><path d="M12 19V6M6 11.5l6-6 6 6"/></svg>오늘 깬 기록 2개</div><div class="more2">폰에서 자세히 보기</div></div></div>
-  <div class="cap"><span class="tag">12 · 운동 결과</span><b>한 장으로 정리</b><span>운동 시간이 가장 크고, 세트 수, 볼륨, 평균 심박이 구분선으로 나뉜 한 줄이에요. 기록 갱신은 세이지 화살표와 함께 한 줄, 맨 아래는 폰에서 자세히 보는 주 버튼이에요.</span></div>
+  <div class="cap"><span class="tag">12 · 운동 결과</span><b>한 장으로 정리</b><span>운동 시간 크게, 세트 수·볼륨·평균 심박 한 줄. 깬 기록은 세이지 화살표로, 맨 아래는 폰 상세 버튼.</span></div>
 </div>
 
 </div>
@@ -580,7 +552,6 @@ svg.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.75;stro
     <h2>지금 정해야 할 것</h2>
     <ul>
       <li>목표 초과 색: 시안은 주황이에요. 휴식이 노랑이라 주황이면 구별되고, 빨강은 오류와 같은 색이라 헷갈릴 수 있어요.</li>
-      <li>휴식 화면 배치: 4a(막대+버튼 둘), 4b(양옆 큰 ±), 4c(−10/+10 반쪽+한 알약) 중에서 고르기.</li>
       <li>보조 화면에 칼로리를 넣을지(기기에서 받을 수 있는지 먼저 확인이 필요해요).</li>
     </ul>
   </div>
