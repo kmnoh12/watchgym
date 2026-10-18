@@ -129,6 +129,63 @@ class WorkoutPresentationTest {
         } finally { activity.pause().stop().destroy() }
     }
 
+    @Test fun browsingExercisesDuringRestKeepsTimerExecutionAndWatchCommand() = checkRestBrowsing(false)
+
+    @Test fun browsingExercisesDuringPausedRestKeepsRemainingTimeAndExecution() = checkRestBrowsing(true)
+
+    private fun checkRestBrowsing(pause: Boolean) {
+        val first = plan().plannedSets.single().copy(completed = true, performedReps = 10)
+        val resting = plan().copy(phase = WorkoutPhase.RESTING,
+            restEndAtMs = System.currentTimeMillis() + 90_000,
+            plannedSets = listOf(first,
+                first.copy(setIndex = 1, completed = false, performedReps = null,
+                    setId = "pending-set", attemptId = "pending-attempt"),
+                first.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", exerciseName = "랫 풀 다운",
+                    completed = false, performedReps = null, setId = "other-set", attemptId = "other-attempt")),
+            lastCompletedSetKey = SetIdentity.completionKey(plan().sessionId, first))
+        SessionStore(app).saveActive(resting)
+        val activity = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        try {
+            val instance = activity.get()
+            val actions = MainActivity::class.java.getDeclaredField("workoutActions").apply { isAccessible = true }
+                .get(instance) as WorkoutActions
+            if (pause) actions.onTogglePause()
+            val before = SessionStore(app).loadActive().getOrThrow()!!
+            val pending = PhoneCommandOutbox(app).pending()
+            val workout = MainActivity::class.java.getDeclaredField("activeWorkout").apply { isAccessible = true }.get(instance)!!
+            val build = MainActivity::class.java.getDeclaredMethod("buildWorkoutModel", workout.javaClass).apply { isAccessible = true }
+            for (index in listOf(1, 0, 1)) {
+                actions.onPageSettled(index)
+                assertEquals("Browsing must not change the durable workout", before, SessionStore(app).loadActive().getOrThrow())
+                assertEquals("Browsing must not start a watch set", pending, PhoneCommandOutbox(app).pending())
+                val model = build.invoke(instance, workout) as dev.kyungmin.kcoach.phone.ui.WorkoutUiModel
+                assertEquals(index, model.exerciseIndex)
+                assertEquals(before.restEndAtMs, model.restEndAtMs)
+                assertEquals(before.pausedRestRemainingMs, model.pausedRestRemainingMs)
+            }
+            actions.onPageSettled(0)
+            actions.onEditValue(0, 0, SetField.REPS, "8", false)
+            actions.onEditFinished()
+            actions.onPageSettled(1)
+            actions.onEditValue(1, 0, SetField.WEIGHT, "12.5", false)
+            actions.onEditFinished()
+            val edited = SessionStore(app).loadActive().getOrThrow()!!
+            assertEquals(12.5, edited.plannedSets.last().weightKg!!, 0.0)
+            assertEquals(8, edited.plannedSets.first().performedReps)
+            assertEquals(before.phase, edited.phase)
+            assertEquals(before.restEndAtMs, edited.restEndAtMs)
+            assertEquals(before.pausedRestRemainingMs, edited.pausedRestRemainingMs)
+            assertEquals(0, edited.exerciseIndex)
+            assertEquals(pending, PhoneCommandOutbox(app).pending())
+            if (pause) actions.onTogglePause()
+            actions.onSkipRest()
+            val started = SessionStore(app).loadActive().getOrThrow()!!
+            assertEquals(0, started.exerciseIndex)
+            assertEquals(1, started.setIndex)
+            assertEquals(WorkoutPhase.WORKING, started.phase)
+        } finally { activity.pause().stop().destroy() }
+    }
+
     @Test fun calibrationCannotReplaceAnActiveWorkoutCommand() {
         SessionStore(app).saveActive(plan())
         val activity = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()

@@ -175,6 +175,8 @@ class MainActivity : ComponentActivity() {
         val startedAtMs: Long = System.currentTimeMillis(),
         val sessionId: String = "phone-${System.currentTimeMillis()}",
         var exerciseIndex: Int = 0,
+        // Browsing during rest never moves the execution cursor.
+        var restingPageIndex: Int? = null,
         var setIndex: Int = 0,
         var completedSets: Int = 0,
         val performedRepsByExercise: MutableMap<String, Int> = mutableMapOf(),
@@ -1712,7 +1714,7 @@ class MainActivity : ComponentActivity() {
             startedAtMs = workout.startedAtMs,
             totalPausedMs = workout.totalPausedMs,
             pausedSinceMs = workout.pausedSinceMs,
-            exerciseIndex = workout.exerciseIndex,
+            exerciseIndex = workout.restingPageIndex ?: workout.exerciseIndex,
             usePounds = workout.usePounds,
             restStartAtMs = activeRestStartAtMs,
             restEndAtMs = activeRestEndAtMs,
@@ -1795,7 +1797,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageSettled(exerciseIndex: Int) {
             val workout = workout() ?: return
-            if (exerciseIndex != workout.exerciseIndex) showWorkoutExercise(workout, exerciseIndex)
+            if (exerciseIndex != (workout.restingPageIndex ?: workout.exerciseIndex)) showWorkoutExercise(workout, exerciseIndex)
         }
 
         override fun onEditValue(exerciseIndex: Int, setIndex: Int, field: SetField, value: String, applyAll: Boolean) {
@@ -2176,6 +2178,12 @@ class MainActivity : ComponentActivity() {
 
     private fun showWorkoutExercise(workout: ActiveWorkout, index: Int): Boolean {
         if (index !in workout.routine.exercises.indices) return false
+        if (activeWorkout === workout && (activeRestEndAtMs > 0L || pausedRestRemainingMs > 0L)) {
+            workout.restingPageIndex = index
+            bumpWorkoutUi()
+            return true
+        }
+        workout.restingPageIndex = null
         val previousExerciseId = workout.routine.exercises
             .getOrNull(workout.exerciseIndex)?.exercise?.id
         workout.routine.exercises.getOrNull(workout.exerciseIndex)?.let { previous ->
@@ -2207,7 +2215,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showWorkoutMenu(workout: ActiveWorkout) {
-        val routineExercise = workout.routine.exercises.getOrNull(workout.exerciseIndex) ?: return
+        val pageIndex = workout.restingPageIndex ?: workout.exerciseIndex
+        val routineExercise = workout.routine.exercises.getOrNull(pageIndex) ?: return
         showSheet { dismiss ->
             SheetOptions(
                 routineExercise.exercise.name,
@@ -2225,7 +2234,7 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) {
                         dismiss()
-                        showExerciseAlternatives(workout.routine, workout.exerciseIndex) { saveWorkoutChanges(workout) }
+                        showExerciseAlternatives(workout.routine, pageIndex) { saveWorkoutChanges(workout) }
                     },
                 ) + if (history.last(routineExercise.exercise.id) != null && routineExercise.sets.none { it.completed }) listOf(
                     SheetItem(KIcon.Reload, "지난 세트 불러오기") {
@@ -3133,6 +3142,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         workout.exerciseIndex = snapshot.exerciseIndex.coerceAtMost(workout.routine.exercises.size)
+        if (snapshot.restEndAtMs <= 0L && snapshot.pausedRestRemainingMs <= 0L || currentLayout != savedLayout) {
+            workout.restingPageIndex = null
+        }
         workout.setIndex = snapshot.setIndex
         workout.performedRepsByExercise.clear()
         workout.performedRepsByExercise.putAll(snapshot.performedReps)
