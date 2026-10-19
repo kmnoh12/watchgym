@@ -55,8 +55,8 @@ class LibraryActions(
 )
 
 private val Modes = listOf("전체", "좋아하는", "자주하는", "최근", "커스텀")
-private val Bodies = listOf("전체", "가슴", "등", "어깨", "삼두", "이두", "하체")
-private val Equipments = listOf("전체", "맨몸", "덤벨", "바벨", "머신", "케이블")
+private val Bodies = listOf("전체") + dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyOrder
+private val Equipments = listOf("전체", "맨몸", "덤벨", "바벨", "머신", "케이블", "기타")
 
 private sealed interface LibRow {
     data class Header(val title: String, val count: Int) : LibRow

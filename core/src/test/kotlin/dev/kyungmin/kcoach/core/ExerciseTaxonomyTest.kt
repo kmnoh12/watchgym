@@ -12,7 +12,7 @@ class ExerciseTaxonomyTest {
 
     @Test
     fun `unknown patterns fall into other and sort last`() {
-        assertEquals(ExerciseTaxonomy.OTHER_ORDER to "기타", ExerciseTaxonomy.section("등", "pullover"))
+        assertEquals(ExerciseTaxonomy.OTHER_ORDER to "기타", ExerciseTaxonomy.section("등", "unknown_pattern"))
         assertEquals(ExerciseTaxonomy.OTHER_ORDER to "기타", ExerciseTaxonomy.section("등", ""))
         assertEquals(ExerciseTaxonomy.OTHER_ORDER to "기타", ExerciseTaxonomy.section("전체", "row"))
     }

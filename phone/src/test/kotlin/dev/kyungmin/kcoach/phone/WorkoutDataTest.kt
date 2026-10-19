@@ -35,7 +35,14 @@ class WorkoutDataTest {
     @Test
     fun `exercise catalog is normalized and category ready`() {
         val ids = WorkoutData.catalog.map { it.id }
+        assertEquals(202, ids.size)
         assertEquals(ids.size, ids.distinct().size)
+        WorkoutData.catalog.forEach { exercise ->
+            assertTrue(exercise.id, exercise.bodyCategory in dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyOrder)
+            assertTrue(exercise.id, exercise.equipment in setOf("맨몸", "덤벨", "바벨", "머신", "케이블", "기타"))
+            assertTrue(exercise.id, dev.kyungmin.kcoach.core.ExerciseTaxonomy.section(
+                exercise.bodyCategory, exercise.pattern).first != dev.kyungmin.kcoach.core.ExerciseTaxonomy.OTHER_ORDER)
+        }
         assertTrue(WorkoutData.catalog.all { it.bodyCategory.isNotBlank() && it.equipment.isNotBlank() })
         assertFalse(WorkoutData.catalog.any { it.name == "풀 업" })
         assertTrue(WorkoutData.catalog.any { it.name == "풀업" })
