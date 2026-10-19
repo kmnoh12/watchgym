@@ -16,8 +16,8 @@ class ExerciseTrackingProfileTest {
             ExerciseTrackingProfiles.resolve(exerciseId)
         }
         assertEquals(ids.toSet(), profiles.map { it.exerciseId }.toSet())
-        assertEquals(43, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
-        assertEquals(7, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
+        assertEquals(44, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
+        assertEquals(6, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
         profiles.filter { it.mode != TrackingMode.MANUAL_REQUIRED }.forEach { profile ->
             assertNotEquals(MotionFamily.UNOBSERVABLE_MANUAL, profile.family)
             assertEquals(profile.family.sharedAlgorithmId, profile.id,

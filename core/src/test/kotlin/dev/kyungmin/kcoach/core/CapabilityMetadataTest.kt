@@ -23,16 +23,6 @@ class CapabilityMetadataTest {
     }
 
     @Test
-    fun oldPullUpCalibrationCannotPromoteFixedGripMovementToAutomatic() {
-        val metadata = ExerciseCapabilityMatrix.resolve("pull_up", "calibrated_same_grip")
-        assertEquals(CapabilityTier.D_MANUAL_REQUIRED, metadata.capabilityTier)
-        assertEquals(CountMode.MANUAL_REQUIRED, metadata.countMode)
-        assertTrue("chin_over_bar" in metadata.unsupportedMetrics)
-        assertEquals(CapabilityTier.D_MANUAL_REQUIRED, ExerciseTrackingProfiles.resolveVariant("pull_up", variantId = "calibrated_same_grip").capabilityTier)
-        assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolveVariant("pull_up", variantId = "calibrated_same_grip").mode)
-    }
-
-    @Test
     fun oldContactProxyCannotPromoteLegPressToAutomatic() {
         val metadata = ExerciseCapabilityMatrix.resolve("leg_press", "hand_on_knee_proxy")
         assertEquals(CapabilityTier.D_MANUAL_REQUIRED, metadata.capabilityTier)
@@ -47,7 +37,7 @@ class CapabilityMetadataTest {
     fun exerciseProfilesExposeTheirMotionSpecificCapabilityTier() {
         assertEquals(CapabilityTier.A_WRIST_DIRECT_AUTO, ExerciseTrackingProfiles.resolve("ez_biceps_curl").capabilityTier)
         assertEquals(CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS, ExerciseTrackingProfiles.resolve("flat_bench").capabilityTier)
-        assertEquals(CapabilityTier.D_MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve("pull_up").capabilityTier)
+        assertEquals(CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS, ExerciseTrackingProfiles.resolve("pull_up").capabilityTier)
         assertEquals(CapabilityTier.C_PERSONALIZED_AUTO_COUNT_BETA, ExerciseTrackingProfiles.resolve("external_rotation").capabilityTier)
         assertEquals(CapabilityTier.D_MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve("leg_extension").capabilityTier)
         assertEquals(TrackingMode.WRIST_IMU_CAUTION, ExerciseTrackingProfiles.resolve("dumbbell_lateral_raise").mode)

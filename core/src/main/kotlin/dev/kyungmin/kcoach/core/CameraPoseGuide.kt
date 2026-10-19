@@ -107,7 +107,7 @@ object CameraPoseGuide {
             MeasurementRecipe.SQUAT -> CameraPoseFamily.SQUAT_SIDE
             MeasurementRecipe.PUSH_UP -> CameraPoseFamily.PLANK_SIDE
             MeasurementRecipe.SIT_UP -> CameraPoseFamily.SITUP_LYING_SIDE
-            MeasurementRecipe.MANUAL -> null
+            MeasurementRecipe.PULL_UP, MeasurementRecipe.MANUAL -> null
         }
     }
 

@@ -38,7 +38,7 @@ internal fun reviewedContracts(): Map<String, ExerciseMeasurementContract> = map
     "dumbbell_triceps_extension" to ExerciseMeasurementContract(MeasurementRecipe.TRICEPS_EXTENSION, "오버헤드와 킥백을 구분해요. 선택한 위팔 자세에서 팔꿈치 폄과 복귀를 기준으로 비교해요."),
     "ez_lying_extension" to ExerciseMeasurementContract(MeasurementRecipe.TRICEPS_EXTENSION, "누운 자세에서 위팔의 기준 위치를 기록해요. 팔꿈치 폄과 복귀를 기준으로 비교해요."),
     "external_rotation" to ExerciseMeasurementContract(MeasurementRecipe.EXTERNAL_ROTATION, "팔꿈치 위치가 유지되는 기준 동작 확인. 손목 방향 신호만으로 팔꿈치 고정/정확한 어깨 회전각을 판정하지 않아요."),
-    "pull_up" to ExerciseMeasurementContract(MeasurementRecipe.MANUAL, "봉을 잡은 손목은 몸통 상승을 직접 대표하지 않아요. 기본 워치 수동, 전신 카메라 관측은 별도."),
+    "pull_up" to ExerciseMeasurementContract(MeasurementRecipe.PULL_UP, "손목이 바에 고정돼 워치는 몸이 오르내릴 때의 전완 움직임을 읽어요. 자동 측정은 베타예요."),
     "assisted_pull_up" to ExerciseMeasurementContract(MeasurementRecipe.MANUAL, "머신 보조량이 달라도 손목 고정 문제는 남아요. 워치 수동 정책을 공유해요."),
     "leg_press" to ExerciseMeasurementContract(MeasurementRecipe.MANUAL, "기구 손잡이를 잡은 손목 신호로 다리의 수행 횟수를 확인하지 않아요. 실제 수행 횟수를 직접 입력해 주세요."),
     "seated_leg_curl" to ExerciseMeasurementContract(MeasurementRecipe.MANUAL, "손잡이 잡은 손목으로 무릎 굽힘을 알 수 없어요. 정상 수행은 수동."),

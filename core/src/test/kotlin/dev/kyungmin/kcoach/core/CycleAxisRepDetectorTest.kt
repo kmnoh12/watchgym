@@ -122,7 +122,7 @@ class CycleAxisRepDetectorTest {
     @Test
     fun rowsLateralRaisesAndTricepsUseTheCycleAxisEngine() {
         for (id in listOf("seated_row", "cable_seated_row", "barbell_row", "one_arm_dumbbell_row", "lying_tbar_row",
-            "dumbbell_lateral_raise", "one_arm_cable_lateral", "dumbbell_triceps_extension")) {
+            "dumbbell_lateral_raise", "one_arm_cable_lateral", "dumbbell_triceps_extension", "pull_up")) {
             val profile = ExerciseTrackingProfiles.resolve(id)
             assertEquals(MotionFamily.CYCLE_AXIS_RETURN, profile.family, id)
             assertEquals("cycle-axis-return-family-v1", profile.id, id)

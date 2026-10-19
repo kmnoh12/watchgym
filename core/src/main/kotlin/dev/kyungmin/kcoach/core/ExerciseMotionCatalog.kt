@@ -78,7 +78,7 @@ object MotionFamilyTemplates {
  */
 object ExerciseMotionCatalog {
     val explicitBindings: List<ExerciseMotionBinding> = listOf(
-        manual("pull_up", "풀업"),
+        binding("pull_up", "풀업", MotionFamily.CYCLE_AXIS_RETURN, grip = "same_bar_grip"),
         manual("assisted_pull_up", "어시스티드 풀업"),
         binding("lying_tbar_row", "라잉 티바 로우", MotionFamily.CYCLE_AXIS_RETURN),
         binding("lat_pull_down", "랫 풀다운", MotionFamily.PULL_RETURN),

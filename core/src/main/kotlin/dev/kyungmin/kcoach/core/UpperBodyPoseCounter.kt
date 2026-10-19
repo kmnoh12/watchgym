@@ -25,6 +25,7 @@ enum class CameraMotion(val restDegrees: Double, val excursionDegrees: Double, v
                 MeasurementRecipe.SQUAT -> return SQUAT_KNEE_FLEXION
                 MeasurementRecipe.PUSH_UP -> return ELBOW_FOLD
                 MeasurementRecipe.SIT_UP -> return SITUP_HIP_FLEXION
+                MeasurementRecipe.PULL_UP -> return null
                 else -> Unit
             }
             val profile = ExerciseTrackingProfiles.resolve(exerciseId, name)

@@ -45,7 +45,7 @@ class CameraCaptureGuideTest {
                 val guide = CameraCaptureGuide.forExercise(id, left)
                 assertTrue(guide.headline.isNotBlank() && guide.headline.length <= 24, "$id ${guide.headline}")
                 val hint = guide.startHint
-                if (ExerciseMeasurementContracts.resolve(id).recipe == MeasurementRecipe.MANUAL) assertNull(hint, id)
+                if (ExerciseMeasurementContracts.resolve(id).recipe in setOf(MeasurementRecipe.MANUAL, MeasurementRecipe.PULL_UP)) assertNull(hint, id)
                 else assertTrue(hint != null && hint.length <= 26, "$id $hint")
             }
         }

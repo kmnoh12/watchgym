@@ -56,6 +56,10 @@ enum class MeasurementRecipe(
     SIT_UP("싯업", MeasurementEngine.TRANSLATION,
         "누운 자세", "상체 일으킴 → 전환 → 누운 자세 복귀", MusclePhase.CONCENTRIC,
         setOf(11, 12, 23, 24, 25, 26)),
+    // Watch-only: the gripped wrist rides with the body, so no camera guide exists for it yet.
+    PULL_UP("풀업", MeasurementEngine.TRANSLATION,
+        "바를 잡고 팔을 편 매달린 자세", "끌어올림 → 정점 → 매달린 자세 복귀", MusclePhase.CONCENTRIC,
+        setOf(11, 12, 13, 14, 15, 16, 23, 24)),
     ;
 
     /** Counting one observed wrist does not require the other arm or every posture metric. */

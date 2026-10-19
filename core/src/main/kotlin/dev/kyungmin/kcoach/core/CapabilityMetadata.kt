@@ -92,19 +92,6 @@ object ExerciseCapabilityMatrix {
 
     private val conditionalRows = listOf(
         standard(
-            exerciseId = "pull_up",
-            tier = CapabilityTier.D_MANUAL_REQUIRED,
-            grip = "same_bar_grip",
-            setup = setOf("same_watch_side", "same_wear_position", "same_bar_grip", "calibration_5_to_8_reps"),
-        ).copy(
-            variantId = "calibrated_same_grip",
-            protocolId = "pull_up_a_b_a_calibration",
-            contactCondition = "bar_grip_unchanged",
-            fallback = "manual_phone_or_watch_input",
-            requiredSetup = setOf("same_watch_side", "same_wear_position", "same_bar_grip", "5_to_8_controlled_reps", "2s_baseline_before_after"),
-            validationMethod = "Watch8 raw IMU + manual/video count; slow/normal/fast cadence, top hold, partial, kipping, rest, and grip-change cases",
-        ),
-        standard(
             exerciseId = "leg_press",
             tier = CapabilityTier.D_MANUAL_REQUIRED,
             setup = setOf("same_watch_side", "same_wear_position", "hand_on_knee_contact", "calibration_5_to_10_reps"),
