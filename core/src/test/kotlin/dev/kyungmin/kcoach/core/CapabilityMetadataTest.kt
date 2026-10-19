@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 class CapabilityMetadataTest {
     @Test
     fun standardMatrixCoversAllFiftyCatalogExercises() {
-        assertEquals(202, ExerciseCapabilityMatrix.standardExerciseIds().size)
-        assertEquals(202, ExerciseCapabilityMatrix.all.count { it.variantId == "standard" })
+        assertEquals(203, ExerciseCapabilityMatrix.standardExerciseIds().size)
+        assertEquals(203, ExerciseCapabilityMatrix.all.count { it.variantId == "standard" })
     }
 
     @Test

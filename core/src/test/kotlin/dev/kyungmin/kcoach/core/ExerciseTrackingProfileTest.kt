@@ -10,14 +10,14 @@ class ExerciseTrackingProfileTest {
     @Test
     fun everyCatalogExerciseResolvesToAnExplicitMotionContract() {
         val ids = ExerciseCapabilityMatrix.standardExerciseIds()
-        assertEquals(202, ids.size)
+        assertEquals(203, ids.size)
 
         val profiles = ids.map { exerciseId ->
             ExerciseTrackingProfiles.resolve(exerciseId)
         }
         assertEquals(ids.toSet(), profiles.map { it.exerciseId }.toSet())
-        assertEquals(158, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
-        assertEquals(44, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
+        assertEquals(160, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
+        assertEquals(43, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
         profiles.filter { it.mode != TrackingMode.MANUAL_REQUIRED }.forEach { profile ->
             assertNotEquals(MotionFamily.UNOBSERVABLE_MANUAL, profile.family)
             assertEquals(profile.family.sharedAlgorithmId, profile.id,

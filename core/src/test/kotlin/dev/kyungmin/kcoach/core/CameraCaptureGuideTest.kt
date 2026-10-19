@@ -29,7 +29,7 @@ class CameraCaptureGuideTest {
             CameraTimestampSource.PHONE_ELAPSED_REALTIME, "fixture-clock", listOf(image), listOf(world.map { it.copy(x = (it.x + it.z) / kotlin.math.sqrt(2.0), z = (it.z - it.x) / kotlin.math.sqrt(2.0)) }), true)
     }
     @Test fun allReviewedExercisesHaveAnExplicitGuideAndRequiredAnatomicalJoints() {
-        assertEquals(195, ExerciseMeasurementContracts.standard.size)
+        assertEquals(196, ExerciseMeasurementContracts.standard.size)
         ExerciseMeasurementContracts.standard.keys.forEach { id ->
             for (left in listOf(true, false)) {
                 val guide = CameraCaptureGuide.forExercise(id, left)

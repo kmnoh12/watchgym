@@ -79,7 +79,7 @@ object MotionFamilyTemplates {
 object ExerciseMotionCatalog {
     val explicitBindings: List<ExerciseMotionBinding> = listOf(
         binding("pull_up", "풀업", MotionFamily.CYCLE_AXIS_RETURN, grip = "same_bar_grip"),
-        manual("assisted_pull_up", "어시스티드 풀업"),
+        binding("assisted_pull_up", "어시스티드 풀업", MotionFamily.CYCLE_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("lying_tbar_row", "라잉 티바 로우", MotionFamily.CYCLE_AXIS_RETURN),
         binding("lat_pull_down", "랫 풀다운", MotionFamily.PULL_RETURN),
         binding("wide_lat_pull_down", "와이드 그립 랫 풀다운", MotionFamily.PULL_RETURN),
@@ -227,6 +227,7 @@ object ExerciseMotionCatalog {
         binding("kickback_cable", "케이블 킥백", MotionFamily.FLEXION_EXTENSION, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("jm_press", "JM 프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("machine_dip", "머신 딥스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("assisted_dip", "어시스티드 딥스", MotionFamily.CYCLE_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("tate_press", "테이트 프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("rolling_triceps_extension", "롤링 트라이셉스 익스텐션", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
 

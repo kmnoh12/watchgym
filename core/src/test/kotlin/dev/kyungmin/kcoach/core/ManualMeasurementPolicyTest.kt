@@ -24,7 +24,7 @@ class ManualMeasurementPolicyTest {
                 SensorCaptureRecord(SensorSample(i * 20_000_000L, 0f, 0f, 9.8f, if (i < 50) 2f else -2f, 0f, 0f))
             },
         )
-        for (id in listOf("assisted_pull_up", "leg_press")) {
+        for (id in listOf("leg_press")) {
             val profile = ExerciseTrackingProfiles.resolve(id)
             assertEquals(TrackingMode.MANUAL_REQUIRED, profile.mode, id)
             val output = PhoneRepAnalyzer.analyze(document, profile, watchDetectedReps = 12)

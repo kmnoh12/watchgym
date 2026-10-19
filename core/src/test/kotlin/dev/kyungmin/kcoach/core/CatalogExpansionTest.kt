@@ -30,7 +30,7 @@ class CatalogExpansionTest {
             "curtsy_lunge", "step_up", "bulgarian_split_squat", "cossack_squat", "arnold_press").forEach {
             assertEquals(MotionFamily.VERTICAL_PRESS_RETURN, ExerciseTrackingProfiles.resolve(it).family, it)
         }
-        listOf("assisted_pull_up", "barbell_shrug", "dumbbell_shrug", "machine_shrug", "wrist_curl",
+        listOf("barbell_shrug", "dumbbell_shrug", "machine_shrug", "wrist_curl",
             "reverse_wrist_curl").forEach {
             assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve(it).mode, it)
         }

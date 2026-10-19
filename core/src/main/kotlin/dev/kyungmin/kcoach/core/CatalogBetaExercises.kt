@@ -9,6 +9,8 @@ object CatalogBetaExercises {
         "chest_dip",
         "pull_up",
         "chin_up",
+        "assisted_pull_up",
+        "assisted_dip",
         "neutral_grip_pull_up",
         "seated_cable_row_close",
         "one_arm_cable_row",
