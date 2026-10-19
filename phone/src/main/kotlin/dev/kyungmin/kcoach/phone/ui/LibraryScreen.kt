@@ -3,6 +3,7 @@ package dev.kyungmin.kcoach.phone.ui
 import android.view.View
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -71,6 +72,23 @@ fun LibraryScreen(
     actions: LibraryActions,
     thumbnail: (ExerciseDefinition) -> View,
 ) {
+    ExerciseBrowser(catalog, frequent, actions, thumbnail)
+}
+
+/** Shared browse tree for adding an exercise and choosing a calibration capture. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun ExerciseBrowser(
+    catalog: List<LibraryEntry>,
+    frequent: Set<String> = emptySet(),
+    actions: LibraryActions,
+    thumbnail: (ExerciseDefinition) -> View,
+    calibration: Boolean = false,
+    header: @Composable () -> Unit = {},
+    enabled: (ExerciseDefinition) -> Boolean = { true },
+    status: (ExerciseDefinition) -> String? = { null },
+    onLongClick: ((ExerciseDefinition) -> Unit)? = null,
+) {
     var mode by remember { mutableStateOf("전체") }
     var body by remember { mutableStateOf("전체") }
     var equipment by remember { mutableStateOf("전체") }
@@ -122,8 +140,9 @@ fun LibraryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(KColors.Bg).padding(start = 18.dp, end = 18.dp, top = 14.dp)) {
+        header()
         Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(54.dp, 58.dp).pressable(actions.back), contentAlignment = Alignment.Center) {
+            if (!calibration) Box(Modifier.size(54.dp, 58.dp).pressable(actions.back), contentAlignment = Alignment.Center) {
                 KIcon(KIcon.Back, KColors.White, size = 28.dp)
             }
             Box(
@@ -140,20 +159,20 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Box(Modifier.size(48.dp, 58.dp).pressable(actions.custom), contentAlignment = Alignment.Center) {
+            if (!calibration) Spacer(Modifier.width(12.dp))
+            if (!calibration) Box(Modifier.size(48.dp, 58.dp).pressable(actions.custom), contentAlignment = Alignment.Center) {
                 KIcon(KIcon.Plus, KColors.White, size = 28.dp)
             }
         }
         Spacer(Modifier.height(6.dp))
         TabStrip(Bodies, body) { body = it }
         Spacer(Modifier.height(10.dp))
-        FilterStrip(Modes, mode) { mode = it }
+        if (!calibration) FilterStrip(Modes, mode) { mode = it }
         Spacer(Modifier.height(2.dp))
         FilterStrip(Equipments, equipment) { equipment = it }
         Spacer(Modifier.height(4.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp)) {
-            item(key = "custom") {
+            if (!calibration) item(key = "custom") {
                 Row(Modifier.fillMaxWidth().pressable(actions.custom).padding(6.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     KIcon(KIcon.Plus, KColors.Accent, size = 18.dp)
                     Spacer(Modifier.width(8.dp))
@@ -179,7 +198,10 @@ fun LibraryScreen(
                         Text("${row.count}", color = KColors.Faint, fontSize = 13.sp)
                     }
                     is LibRow.Family -> FamilyRow(row) { expandedFamilies[row.key] = !row.expanded }
-                    is LibRow.Item -> ExerciseRow(row.exercise, row.indented, thumbnail) { actions.add(row.exercise) }
+                    is LibRow.Item -> ExerciseRow(
+                        row.exercise, row.indented, thumbnail, enabled(row.exercise), status(row.exercise),
+                        onLongClick?.let { action -> { action(row.exercise) } },
+                    ) { actions.add(row.exercise) }
                 }
             }
         }
@@ -199,10 +221,23 @@ private fun FamilyRow(row: LibRow.Family, onToggle: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ExerciseRow(exercise: ExerciseDefinition, indented: Boolean, thumbnail: (ExerciseDefinition) -> View, onClick: () -> Unit) {
+private fun ExerciseRow(
+    exercise: ExerciseDefinition,
+    indented: Boolean,
+    thumbnail: (ExerciseDefinition) -> View,
+    enabled: Boolean,
+    status: String?,
+    onLongClick: (() -> Unit)?,
+    onClick: () -> Unit,
+) {
     Row(
-        Modifier.fillMaxWidth().pressable(onClick).padding(start = if (indented) 30.dp else 4.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+        Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)
+            .then(if (onLongClick != null) Modifier.combinedClickable(
+                onClick = { if (enabled) onClick() }, onLongClick = onLongClick,
+            ) else Modifier.pressable { if (enabled) onClick() })
+            .padding(start = if (indented) 30.dp else 4.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val entered = rememberEntered()
@@ -213,6 +248,7 @@ private fun ExerciseRow(exercise: ExerciseDefinition, indented: Boolean, thumbna
             Text(exercise.name, color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(2.dp))
             Text("${exercise.muscles} · ${exercise.equipment}", color = KColors.Muted, fontSize = 12.sp)
+            status?.let { Text(it, color = if (enabled) KColors.Accent else KColors.Muted, fontSize = 12.sp) }
         }
         if (exercise.favorite) KIcon(KIcon.Heart, KColors.Accent, size = 16.dp, filled = true)
     }

@@ -37,7 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
 private fun DetailHeader(title: String, back: () -> Unit) {
@@ -70,27 +69,19 @@ private fun WideButton(text: String, background: Color, content: Color, height: 
 
 // ---- Calibration -----------------------------------------------------------
 
-class CalibrationRowUi(val id: String, val name: String, val muscles: String, val status: String, val selected: Boolean, val thumbnail: () -> View)
-
-class CalibrationProfileUi(val title: String, val values: List<Pair<String, String>>, val note: String)
-
 class CalibrationUi(
-    val selectedName: String,
-    val status: String,
-    val statusAmber: Boolean,
+    val catalog: List<LibraryEntry>,
     val instructions: String,
-    val manualRequired: Boolean,
-    val profile: CalibrationProfileUi?,
-    val rows: List<CalibrationRowUi>,
-    val cameraObservationAvailable: Boolean = false,
+    val statuses: Map<String, String>,
+    val selectableIds: Set<String>,
 )
 
-/** Live state of the main button, driven by watch events. */
+/** Live capture state, driven by watch events. */
 class CalibrationButtonUi(val text: String, val enabled: Boolean, val textAmber: Boolean = false)
 
 class CalibrationActions(
     val toggle: () -> Unit,
-    val deleteProfile: () -> Unit,
+    val deleteProfile: (String) -> Unit,
     val select: (String) -> Unit,
     val openSensorView: (() -> Unit)? = null,
     val openCaptureReview: (() -> Unit)? = null,
@@ -103,74 +94,44 @@ fun CalibrationScreen(
     sessionActive: () -> Boolean,
     button: () -> CalibrationButtonUi,
     actions: CalibrationActions,
+    thumbnail: (dev.kyungmin.kcoach.phone.ExerciseDefinition) -> View,
 ) {
     var researchVisible by remember { mutableStateOf(false) }
-    val state = button()
     val active = sessionActive()
-    Column(Modifier.fillMaxSize().background(KColors.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+    ExerciseBrowser(
+        catalog = ui.catalog,
+        actions = LibraryActions({}, {}, { actions.select(it.id) }),
+        thumbnail = thumbnail,
+        calibration = true,
+        enabled = { !active && it.id in ui.selectableIds },
+        status = { ui.statuses[it.id] },
+        onLongClick = { if (!active) actions.deleteProfile(it.id) },
+        header = {
             Text("측정·보정", color = KColors.White, fontSize = 32.sp, fontWeight = FontWeight.Medium,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { researchVisible = !researchVisible }))
-        }
-        Spacer(Modifier.height(24.dp))
-        Text(ui.selectedName, color = KColors.White, fontSize = 24.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(7.dp))
-        Text(ui.status, color = if (ui.statusAmber) KColors.Accent else KColors.Soft, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(12.dp))
-        Text(ui.instructions, color = KColors.Muted, fontSize = 15.sp)
-        Spacer(Modifier.height(20.dp))
-        WideButton(
-            state.text,
-            if (active) KColors.Accent else KColors.SurfaceRaised,
-            if (state.textAmber) KColors.Accent else if (active) KColors.OnAccent else KColors.Muted,
-            58,
-            enabled = state.enabled && (!ui.manualRequired || ui.cameraObservationAvailable),
-            onClick = actions.toggle,
-        )
-        if (researchVisible) actions.openSensorView?.let { open ->
-            Spacer(Modifier.height(10.dp))
-            WideButton("연구 모드 · 센서·3D", KColors.SurfaceRaised, KColors.Soft, 48,
-                enabled = !active, onClick = open)
-        }
-        actions.openCaptureReview?.let { open ->
-            Spacer(Modifier.height(10.dp))
-            WideButton("저장한 촬영", KColors.SurfaceRaised, KColors.Soft, 48,
-                enabled = !active, onClick = open)
-        }
-        ui.profile?.let { profile ->
-            Spacer(Modifier.height(28.dp))
-            SectionCard(profile.title, profile.values)
-            Spacer(Modifier.height(8.dp))
-            Text(profile.note, color = KColors.Muted, fontSize = 12.sp)
+                modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
+                    .combinedClickable(onClick = {}, onLongClick = { researchVisible = !researchVisible }))
+            Text(ui.instructions, color = KColors.Muted, fontSize = 14.sp)
             Spacer(Modifier.height(12.dp))
-            WideButton("보정된 기록 삭제", Color(0xFF2A1613), KColors.Red, 54, onClick = actions.deleteProfile)
-        }
-        Spacer(Modifier.height(28.dp))
-        Text("보정할 운동 선택", color = KColors.Muted, fontSize = 13.sp)
-        Spacer(Modifier.height(6.dp))
-        Box(Modifier.fillMaxWidth().height(0.5.dp).background(KColors.Hairline))
-        ui.rows.forEach { row ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .alpha(if (active) 0.55f else 1f)
-                    .clip(KShape.Control)
-                    .background(if (row.selected) KColors.SurfaceRaised else Color.Transparent)
-                    .pressable { if (!active) actions.select(row.id) }
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                AndroidView(factory = { row.thumbnail() }, modifier = Modifier.size(58.dp))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(row.name, color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(2.dp))
-                    Text("${row.muscles} · ${row.status}", color = KColors.Muted, fontSize = 12.sp)
+            if (active) {
+                val state = button()
+                WideButton(state.text, KColors.Accent, KColors.OnAccent, 48,
+                    enabled = state.enabled, onClick = actions.toggle)
+                Spacer(Modifier.height(8.dp))
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                actions.openCaptureReview?.let { open ->
+                    Text("저장한 촬영", color = KColors.Soft, fontSize = 14.sp,
+                        modifier = Modifier.pressable { if (!active) open() }.padding(vertical = 10.dp))
+                }
+                if (researchVisible) actions.openSensorView?.let { open ->
+                    Spacer(Modifier.width(20.dp))
+                    Text("연구 모드 · 센서·3D", color = KColors.Soft, fontSize = 14.sp,
+                        modifier = Modifier.pressable { if (!active) open() }.padding(vertical = 10.dp))
                 }
             }
-            Box(Modifier.fillMaxWidth().height(0.5.dp).background(KColors.Hairline))
-        }
-    }
+            Spacer(Modifier.height(6.dp))
+        },
+    )
 }
 
 // ---- My mountain -----------------------------------------------------------

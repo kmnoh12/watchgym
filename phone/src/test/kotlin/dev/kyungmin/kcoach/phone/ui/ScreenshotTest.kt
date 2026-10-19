@@ -106,15 +106,17 @@ class ScreenshotTest {
     fun calibration() = shot("calibration") {
         val context = androidx.compose.ui.platform.LocalContext.current
         val blank = { android.view.View(context) }
-        val ui = CalibrationUi(
-            "랫 풀 다운", "최근 보정 저장됨 · 감지 5회", false, "기준 자세를 잡고 자연스럽게 5회 왕복해요", false,
-            CalibrationProfileUi("최근 보정", listOf("감지된 반복" to "5회", "보정 때 반복 시간" to "2.4초", "설정 용도" to "움직임·반복 시간 기준"), "다시 보정하면 이전 설정을 바꿔요. 평소 착용 위치와 속도로 보정해 주세요."),
-            listOf(
-                CalibrationRowUi("a", "랫 풀 다운", "등", "보정 완료", true, blank),
-                CalibrationRowUi("b", "시티드 로우", "등", "보정 전", false, blank),
-            ),
+        val exercises = listOf(
+            dev.kyungmin.kcoach.phone.ExerciseDefinition("a", "랫 풀 다운", "등", "등", "케이블"),
+            dev.kyungmin.kcoach.phone.ExerciseDefinition("b", "시티드 로우", "등", "등", "머신"),
         )
-        CalibrationScreen(ui, { false }, { CalibrationButtonUi("보정 시작", true) }, CalibrationActions({}, {}, {}, {}))
+        val ui = CalibrationUi(
+            exercises.map { LibraryEntry(it, 0, "당기기", 0) },
+            "워치와 폰 셀카 카메라로 내 동작을 함께 기록해요.",
+            mapOf("a" to "보정 저장됨", "b" to "촬영하여 보정"), setOf("a", "b"),
+        )
+        CalibrationScreen(ui, { false }, { CalibrationButtonUi("보정 종료·저장", true) },
+            CalibrationActions({}, {}, {}, {}), { blank() })
     }
 
     @Test

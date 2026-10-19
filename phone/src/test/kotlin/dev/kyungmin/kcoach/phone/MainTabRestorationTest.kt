@@ -1,5 +1,6 @@
 package dev.kyungmin.kcoach.phone
 
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +32,10 @@ class MainTabRestorationTest {
         try {
             val exercise = MainActivity::class.java.getDeclaredField("selectedCalibrationExerciseId")
                 .apply { isAccessible = true }
+            assertNull("Calibration must not preselect external rotation", exercise.get(controller.get()))
+            MainActivity::class.java.getDeclaredMethod("showCalibration")
+                .apply { isAccessible = true }.invoke(controller.get())
+            assertNull("Opening the tab must not pick the first exercise", exercise.get(controller.get()))
             exercise.set(controller.get(), "smith_squat")
             MainActivity::class.java.getDeclaredMethod("showCalibration")
                 .apply { isAccessible = true }.invoke(controller.get())

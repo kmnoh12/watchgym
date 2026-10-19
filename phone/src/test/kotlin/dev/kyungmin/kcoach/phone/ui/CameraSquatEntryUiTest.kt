@@ -16,11 +16,16 @@ class CameraSquatEntryUiTest {
     @Test fun wristManualPolicyDoesNotDisableTheSeparateFullBodyCameraEntry() {
         var opened = false
         compose.setContent {
-            CalibrationScreen(CalibrationUi("스쿼트", "워치 단독 수동", false, "전신을 촬영해요", true, null,
-                emptyList(), cameraObservationAvailable = true), { false }, { CalibrationButtonUi("전신 촬영", true) },
-                CalibrationActions({ opened = true }, {}, {}))
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val exercise = dev.kyungmin.kcoach.phone.ExerciseDefinition("squat", "스쿼트", "하체", "하체", "맨몸")
+            CalibrationScreen(
+                CalibrationUi(listOf(LibraryEntry(exercise, 0, "스쿼트", 0)), "전신을 촬영해요",
+                    mapOf("squat" to "전신 촬영"), setOf("squat")),
+                { false }, { CalibrationButtonUi("보정 종료·저장", true) },
+                CalibrationActions({}, {}, { opened = true }), { android.view.View(context) },
+            )
         }
-        compose.onNodeWithText("전신 촬영").assertIsEnabled().performClick()
+        compose.onNodeWithText("스쿼트", useUnmergedTree = true).performClick()
         assertTrue(opened)
     }
 }
