@@ -2025,7 +2025,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val weightText = weight?.let { " · ${cleanWeight(it)}kg" } ?: ""
-        val firstLine = "$exerciseName · 세트 ${observed.setIndex + 1}" +
+        // While resting the watch already points at the next set, so the title carries only the exercise.
+        val firstLine = (if (phase == "RESTING") exerciseName else "$exerciseName · 세트 ${observed.setIndex + 1}") +
             if (personalizedTracking) " · 개인보정 적용" else ""
         val secondLine = when (phase) {
             "POSITIONING" -> "측정 준비 중 · 손목 안정 확인"
@@ -2034,7 +2035,7 @@ class MainActivity : ComponentActivity() {
             "WORKING_START_CONFIRMED" -> "시작 손목 방향 확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
             "WORKING_START_BYPASSED" -> "직접 시작 · 방향 미확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
             "WORKING_START_UNCHECKED" -> "시작 방향 미확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
-            "RESTING" -> "휴식 중 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
+            "RESTING" -> "${observed.setIndex}세트 종료 · 다음 세트: ${observed.setIndex + 1}세트$weightText · ${targetReps}회 · ${heartRateText(heartRate)}"
             "SET_COMPLETE" -> "세트 완료 · ${reps}회$weightText · ${heartRateText(heartRate)}"
             else -> "${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
         }
