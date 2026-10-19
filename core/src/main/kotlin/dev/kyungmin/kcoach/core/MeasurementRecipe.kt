@@ -135,7 +135,7 @@ object ExerciseMeasurementContracts {
                 "맨몸 푸시업. 손목이 바닥에 고정돼 워치는 전완 기울기 변화를 읽어요. 카메라 보정으로 횟수를 확인하세요.")
             "sit_up" -> ExerciseMeasurementContract(MeasurementRecipe.SIT_UP,
                 "누운 자세에서 상체를 일으키는 싯업. 카메라 보정으로 횟수를 확인하세요.")
-            "high_row_machine", "standing_tbar_row" -> ExerciseMeasurementContract(
+            "high_row_machine", "high_row_plate", "standing_tbar_row" -> ExerciseMeasurementContract(
                 MeasurementRecipe.ROW, "기구의 손잡이 방향·피벗·몸통 지지를 확인해야 하는 추가 검증 대상.")
             "barbell_shoulder_press" -> ExerciseMeasurementContract(
                 MeasurementRecipe.SHOULDER_PRESS, "바벨 그립·서기/앉기 조건. 자동 측정은 별도 검증 필요.")

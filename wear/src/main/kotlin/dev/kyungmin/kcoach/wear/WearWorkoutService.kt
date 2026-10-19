@@ -2341,9 +2341,10 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun vibrateShort(force: Boolean = false) {
         if (!running && !force) return
         val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
-        // Same 35 ms length. A fixed mid-high strength (below the target pulse's 255) where the motor supports it.
+        // Full strength and 55 ms: a 35 ms pulse barely spins the watch motor up, so it was hard to feel mid-set.
+        // The target pulse stays distinct as three pulses.
         val amplitude = if (vibrator.hasAmplitudeControl()) REP_TICK_AMPLITUDE else VibrationEffect.DEFAULT_AMPLITUDE
-        vibrator.vibrate(VibrationEffect.createOneShot(35, amplitude))
+        vibrator.vibrate(VibrationEffect.createOneShot(REP_TICK_MS, amplitude))
     }
 
     private fun vibrateTargetReached(force: Boolean = false) {
@@ -2396,7 +2397,8 @@ class WearWorkoutService : Service(), SensorEventListener {
         const val EXTRA_COMMAND = "command"
         private const val CHANNEL_ID = "kcoach_wear_workout"
         private const val NOTIFICATION_ID = 4102
-        private const val REP_TICK_AMPLITUDE = 180
+        private const val REP_TICK_AMPLITUDE = 255
+        private const val REP_TICK_MS = 55L
         private const val PHONE_HEARTBEAT_TIMEOUT_MS = 12_000L
         private const val PHONE_WATCHDOG_INTERVAL_MS = 3_000L
         private const val CAPTURE_PREFS = "capture-outbox"

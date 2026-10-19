@@ -330,7 +330,11 @@ class SessionStore(private val context: Context) {
         val old = prefs.getString(KEY_ACTIVE_SNAPSHOT, null)?.let { runCatching { WorkoutSnapshotCodec.decode(it) }.getOrNull() }?.takeIf { it.sessionId == candidate.sessionId }
         val changed = old?.let { it.restEndAtMs != candidate.restEndAtMs || it.paused != candidate.paused ||
             it.pausedRestRemainingMs != candidate.pausedRestRemainingMs || it.watchRestSeq != candidate.watchRestSeq } ?: (candidate.restEndAtMs > 0 || candidate.paused)
-        val snapshot = candidate.copy(restRev = (old?.restRev ?: 0) + if (changed) 1 else 0,
+        // A different next set while resting must also bump the revision, or the watch drops the resync as a duplicate.
+        val nextSetChanged = old != null && (candidate.restEndAtMs > 0 || candidate.pausedRestRemainingMs > 0) &&
+            WorkoutSessionReducer.nextPendingSet(old)?.let { Triple(it.exerciseId, it.setId, it.attemptId) } !=
+            WorkoutSessionReducer.nextPendingSet(candidate)?.let { Triple(it.exerciseId, it.setId, it.attemptId) }
+        val snapshot = candidate.copy(restRev = (old?.restRev ?: 0) + if (changed || nextSetChanged) 1 else 0,
             watchRestSeq = maxOf(old?.watchRestSeq ?: 0, candidate.watchRestSeq))
         val revision = prefs.getLong(KEY_REVISION, 0) + 1
         val edit = prefs.edit().putString(KEY_ACTIVE_SNAPSHOT, WorkoutSnapshotCodec.encode(snapshot)).putLong(KEY_REVISION, revision)

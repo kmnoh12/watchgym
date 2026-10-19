@@ -714,8 +714,10 @@ class MainActivity : ComponentActivity() {
         )
         val actions = HomeActions(
             openRoutine = { routine ->
-                selectedRoutine = routine
-                showRoutine(routine, active = activeWorkout?.takeIf { it.routine === routine }, animateIn = true)
+                // The workout runs on a copy of the routine, so match by id to show what is actually being done.
+                val running = activeWorkout?.takeIf { it.routine === routine || it.routine.id == routine.id }
+                selectedRoutine = running?.routine ?: routine
+                showRoutine(running?.routine ?: routine, active = running, animateIn = true)
             },
             routineMenu = ::showRoutineMenu,
             freeWorkout = ::showFreeWorkout,
@@ -783,8 +785,9 @@ class MainActivity : ComponentActivity() {
                             sets = mutableListOf(PlannedSet(null, 10)),
                         )
                         if (routines.any { saved -> saved === routine }) saveRoutineLibrary()
+                        commitRunningRoutineEdit(routine)
                     },
-                    onReturn = { showRoutine(routine) },
+                    onReturn = { showRoutine(routine, active = active) },
                 )
             },
         )
@@ -1867,7 +1870,9 @@ class MainActivity : ComponentActivity() {
             val routineExercise = exercise(exerciseIndex) ?: return
             val source = routineExercise.sets.lastOrNull() ?: PlannedSet(null, 10)
             routineExercise.sets += PlannedSet(source.weightKg, source.targetReps, gripType = source.gripType, restSeconds = source.restSeconds)
-            workout()?.let(::persistActiveWorkout)
+            val workout = workout() ?: return
+            if (!persistActiveWorkout(workout)) return
+            if (activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
             bumpWorkoutUi()
         }
 
@@ -2204,7 +2209,21 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) {
                         dismiss()
-                        showExerciseAlternatives(workout.routine, pageIndex) { saveWorkoutChanges(workout) }
+                        showExerciseAlternatives(workout.routine, pageIndex) { saveWorkoutChanges(workout, forceRebuild = true) }
+                    },
+                    SheetItem(KIcon.Plus, "운동 추가", featured = true) {
+                        dismiss()
+                        openLibrary(
+                            onSelect = {
+                                workout.routine.exercises += RoutineExercise(it, mutableListOf(PlannedSet(null, 10)))
+                                commitRunningRoutineEdit(workout.routine)
+                            },
+                            onReturn = { showActiveWorkout(forceRebuild = true) },
+                        )
+                    },
+                    SheetItem(KIcon.Trash, "운동 삭제", destructive = true) {
+                        dismiss()
+                        confirmRemoveExercise(workout.routine, pageIndex, workout) { showActiveWorkout(forceRebuild = true) }
                     },
                 ) + if (history.last(routineExercise.exercise.id) != null && routineExercise.sets.none { it.completed }) listOf(
                     SheetItem(KIcon.Reload, "지난 세트 불러오기") {
@@ -2286,13 +2305,14 @@ class MainActivity : ComponentActivity() {
                     SheetAction("이전에 세트 추가", false) {
                         dismiss()
                         routineExercise.sets.add(setIndex, PlannedSet(set.weightKg, set.targetReps))
-                        saveWorkoutChanges(workout)
+                        // syncWorkingSet skips resting, so a changed set list must be pushed explicitly.
+                        if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
                     },
                     SheetAction("세트 삭제", true) {
                         dismiss()
                         if (routineExercise.sets.size > 1) routineExercise.sets.removeAt(setIndex)
                         workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(routineExercise.sets.lastIndex)
-                        saveWorkoutChanges(workout)
+                        if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
                     },
                 ),
             )
@@ -2599,8 +2619,20 @@ class MainActivity : ComponentActivity() {
         if (announce) Toast.makeText(this, "순서를 바꿨어요", Toast.LENGTH_SHORT).show()
     }
 
+    /** Saves and resyncs the watch when [routine] is the running workout's list, which edits alone do not do. */
+    private fun commitRunningRoutineEdit(routine: WorkoutRoutine) {
+        val workout = activeWorkout?.takeIf { it.routine === routine } ?: return
+        if (workout.exerciseIndex >= routine.exercises.size) workout.exerciseIndex = max(0, routine.exercises.lastIndex)
+        workout.restingPageIndex = null
+        if (persistActiveWorkout(workout)) resyncActiveWorkoutToWatch(workout)
+    }
+
     private fun confirmRemoveExercise(routine: WorkoutRoutine, index: Int, active: ActiveWorkout?, onReturn: () -> Unit) {
         val exercise = routine.exercises.getOrNull(index)?.exercise ?: return
+        if (activeWorkout?.routine === routine) {
+            if (routine.exercises.size <= 1) return Toast.makeText(this, "운동이 하나뿐이라 삭제할 수 없어요", Toast.LENGTH_SHORT).show()
+            if (routine.exercises[index].sets.any { it.completed }) return Toast.makeText(this, "완료한 세트가 있는 운동은 삭제할 수 없어요", Toast.LENGTH_SHORT).show()
+        }
         showPopup { dismiss ->
             ConfirmDialog("${exercise.name} 삭제", "이 루틴에서 운동을 삭제할까요?", "취소", "삭제", dismiss) {
                 routine.exercises.removeAt(index)
@@ -2613,6 +2645,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (routines.any { it === routine }) saveRoutineLibrary()
+                commitRunningRoutineEdit(routine)
                 Toast.makeText(this, "운동을 삭제했어요", Toast.LENGTH_SHORT).show()
                 onReturn()
             }
@@ -2633,6 +2666,7 @@ class MainActivity : ComponentActivity() {
             PickDialog("운동 대체\n${current.name}", labels, dismiss) { which ->
                 routine.exercises[index] = routine.exercises[index].copy(exercise = alternatives[which])
                 if (routines.any { it === routine }) saveRoutineLibrary()
+                commitRunningRoutineEdit(routine)
                 Toast.makeText(this, "${alternatives[which].name}(으)로 바꿨어요", Toast.LENGTH_SHORT).show()
                 onReturn()
             }
