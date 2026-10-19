@@ -32,6 +32,13 @@ class CycleAxisRepDetectorTest {
         }
     }
 
+    /** The app requires a still wrist before counting starts, so a realistic set opens with a quiet stretch. */
+    private fun withLeadingStill(samples: List<SensorSample>, seconds: Double, hz: Int = 50): List<SensorSample> {
+        val still = (0 until (seconds * hz).toInt()).map { SensorSample(1_000_000_000L + it * (1e9 / hz).toLong(), 0f, 0f, 9.8f, 0f, 0f, 0f, 3) }
+        val shift = seconds * 1e9.toLong()
+        return still + samples.map { it.copy(timestampNs = it.timestampNs + shift.toLong()) }
+    }
+
     private fun count(profileId: String, samples: List<SensorSample>): Int {
         val detector = ProfiledMotionRepDetector(ExerciseTrackingProfiles.resolve(profileId))
         detector.beginCounting()
@@ -70,6 +77,46 @@ class CycleAxisRepDetectorTest {
     fun aRealSizedRowStrokeIsStillCountedFromGyroOrAcceleration() {
         assertEquals(10, count("cable_seated_row", obliqueSet(10, 2.3, 0.83)))
         assertEquals(10, count("cable_seated_row", obliqueAcceleration(10, 2.3, 3.4)))
+    }
+
+    @Test
+    fun everyRepIsReportedShortlyAfterItsPeakStartingWithTheFirst() {
+        val samples = withLeadingStill(obliqueSet(10, 2.3, 0.8), 2.0)
+        val detector = ProfiledMotionRepDetector(ExerciseTrackingProfiles.resolve("cable_seated_row"))
+        detector.beginCounting()
+        val delays = mutableListOf<Double>()
+        samples.forEach { sample ->
+            detector.add(sample)?.let { delays += (sample.timestampNs - it.endTimestampNs) / 1e9 }
+        }
+        assertEquals(10, delays.size + detector.finishAll().size)
+        assertTrue(delays.size >= 9, "reps must be reported while the set runs, not at its end: ${delays.size}")
+        assertTrue(delays.all { it in 0.0..0.7 }, "each rep is reported within 0.7 s of its peak: $delays")
+    }
+
+    @Test
+    fun theFirstRepIsNotDelayedUntilThreePeaksExist() {
+        val samples = withLeadingStill(obliqueSet(10, 2.3, 0.8), 2.0)
+        val detector = ProfiledMotionRepDetector(ExerciseTrackingProfiles.resolve("cable_seated_row"))
+        detector.beginCounting()
+        val firstReportedAt = samples.firstOrNull { detector.add(it) != null }
+        val startNs = samples.first().timestampNs
+        assertTrue(firstReportedAt != null && firstReportedAt.timestampNs - startNs < 4_500_000_000L + 0L,
+            "first rep must be reported before the second rep finishes")
+    }
+
+    @Test
+    fun theTwoLobesOfOneFirstRepAreNotCountedTwice() {
+        val axis = doubleArrayOf(0.40, 0.70, -0.59)
+        val hz = 50
+        // A first rep whose pull and return lobes are one second apart, then regular 2.3 s reps.
+        val peaksAt = listOf(1.0, 2.0) + (0 until 9).map { 4.3 + it * 2.3 }
+        val samples = (0 until 28 * hz).map { i ->
+            val t = i.toDouble() / hz
+            val wave = peaksAt.sumOf { 0.8 * kotlin.math.exp(-((t - it) * (t - it)) / (2 * 0.12 * 0.12)) }
+            SensorSample(1_000_000_000L + (t * 1e9).toLong(), 0f, 0f, 9.8f,
+                (wave * axis[0]).toFloat(), (wave * axis[1]).toFloat(), (wave * axis[2]).toFloat(), 3)
+        }
+        assertEquals(10, count("cable_seated_row", samples))
     }
 
     @Test

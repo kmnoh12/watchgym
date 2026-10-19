@@ -7,9 +7,14 @@ import kotlin.math.sqrt
 /**
  * Counts one-axis rhythmic wrist cycles (rows, lateral raises, triceps extensions) without gravity or a fixed sensor axis.
  *
- * Every [STEP_NS] the whole history since [beginCounting] is re-analysed: the principal axis of the smoothed gyroscope and of
- * the smoothed dynamic acceleration is found, the more regular candidate (lowest interval variation) is kept, and its
- * peaks are counted. A peak is final [CONFIRM_NS] after it happened, so reps appear 1-2 s late. The count never decreases.
+ * Every [STEP_NS] the last [WINDOW_NS] are re-analysed: the principal axis of the smoothed gyroscope and of the smoothed dynamic
+ * acceleration is found and its peaks are counted. A peak is final [CONFIRM_NS] after it happened, so each rep is reported
+ * about 0.3-0.4 s after its peak, starting with the first one. Once enough peaks exist the more regular candidate wins; until
+ * then the largest one does, and the first reported rep locks the signal and direction so a later re-selection cannot shift
+ * peaks by half a cycle and double count. Reps are placed by time, so a re-analysis never relabels or repeats a delivered rep.
+ * The pull and return lobes of the very first rep can both stand out, so a second report within [FIRST_PAIR_SEPARATION_NS]
+ * of the first is dropped. Known cost: rows slower than 1.2 s per rep are fine, a faster first pair loses its second rep, and
+ * set-end motion (putting the handle down) can still add a rep after the last real one.
  * Peaks are relative to the set's own 95th percentile, so an absolute floor ([GYRO_AMPLITUDE_FLOOR], [DYN_AMPLITUDE_FLOOR])
  * refuses sets whose motion is too small to be a rep of these exercises (a still wrist or a few-centimetre fidget).
  * The floors sit well below the weakest real sets seen: one Watch8 cable seated row (gyro 0.83 rad/s) and MM-Fit rows,
@@ -20,10 +25,15 @@ import kotlin.math.sqrt
 class CycleAxisRepDetector {
     companion object {
         private const val MIN_SAMPLE_GAP_NS = 38_000_000L
-        private const val STEP_NS = 1_500_000_000L
-        private const val FIRST_ANALYSIS_NS = 4_000_000_000L
-        private const val CONFIRM_NS = 600_000_000L
+        private const val STEP_NS = 100_000_000L
+        private const val FIRST_ANALYSIS_NS = 800_000_000L
+        private const val CONFIRM_NS = 300_000_000L
+        private const val WINDOW_NS = 20_000_000_000L
+        private const val UNLOCK_NS = 8_000_000_000L
+        private const val DEFAULT_PERIOD_S = 2.0
+        private const val PROVISIONAL_SCORE = 100.0
         private const val MIN_SEPARATION_NS = 800_000_000L
+        private const val FIRST_PAIR_SEPARATION_NS = 1_200_000_000L
         private const val MAX_GAP_NS = 2_000_000_000L
         private const val MAX_HISTORY = 30_000
         private const val GYRO_SMOOTH = 3
@@ -31,7 +41,7 @@ class CycleAxisRepDetector {
         private const val PROJECTION_SMOOTH = 7
         private const val PEAK_HALF_WINDOW = 8
         private const val PEAK_FRACTION = 0.40
-        private const val MIN_PEAKS = 3
+        private const val REGULAR_PEAKS = 3
         private const val MIN_MEDIAN_S = 1.0
         private const val MAX_MEDIAN_S = 7.0
         private const val GYRO_AMPLITUDE_FLOOR = 0.4 // rad/s
@@ -68,7 +78,11 @@ class CycleAxisRepDetector {
     private var lastNs = 0L
     private var startNs = 0L
     private var nextAnalysisNs = 0L
-    private var emitted = 0
+    private var lastPeakNs: Long? = null
+    private var lockedGyro = false
+    private var lockedSign = 0
+    private var locked = false
+    private var secondDelivered = false
     private val pending = ArrayDeque<ProfiledMotionRepEvent>()
 
     val maximumCycleNs: Long get() = (MAX_MEDIAN_S * 1e9).toLong()
@@ -76,7 +90,7 @@ class CycleAxisRepDetector {
     fun beginCounting() {
         count = 0; gyro.forEach { it.clear() }; dyn.forEach { it.clear() }
         gyroMean = TrailingMean(GYRO_SMOOTH); gravityMean = TrailingMean(GRAVITY_WINDOW); dynMean = TrailingMean(GYRO_SMOOTH)
-        lastNs = 0L; startNs = 0L; nextAnalysisNs = 0L; emitted = 0; pending.clear()
+        lastNs = 0L; startNs = 0L; nextAnalysisNs = 0L; lastPeakNs = null; locked = false; secondDelivered = false; pending.clear()
     }
 
     fun add(sample: SensorSample): ProfiledMotionRepEvent? {
@@ -108,45 +122,72 @@ class CycleAxisRepDetector {
         return rest
     }
 
-    private class Candidate(val score: Double, val peaksNs: LongArray, val amplitude: Double, val medianS: Double)
+    private class Candidate(val score: Double, val peaksNs: LongArray, val amplitude: Double, val medianS: Double,
+        val gyroSource: Boolean, val sign: Int)
+
+    private fun windowStart(nowNs: Long): Int {
+        var i = count - 1
+        while (i > 0 && times[i - 1] >= nowNs - WINDOW_NS) i--
+        return i
+    }
 
     private fun analyze(nowNs: Long, confirmNs: Long) {
         if (count < 40) return
+        val last = lastPeakNs
+        if (locked && last != null && nowNs - last > UNLOCK_NS) locked = false
+        val from = windowStart(nowNs)
+        if (count - from < 40) return
         var best: Candidate? = null
-        for (series in arrayOf(gyro, dyn)) {
-            val projected = project(series)
+        for (gyroSource in booleanArrayOf(true, false)) {
+            val series = if (gyroSource) gyro else dyn
+            val projected = project(series, from)
             val sorted = projected.map { abs(it) }.sorted()
             val p95 = max(sorted[(0.95 * (sorted.size - 1)).toInt()], 1e-9)
-            if (p95 < (if (series === gyro) GYRO_AMPLITUDE_FLOOR else DYN_AMPLITUDE_FLOOR)) continue
+            val floor = if (gyroSource) GYRO_AMPLITUDE_FLOOR else DYN_AMPLITUDE_FLOOR
+            if (p95 < floor) continue
             for (sign in intArrayOf(1, -1)) {
-                val peaks = findPeaks(projected, sign, p95)
-                if (peaks.size < MIN_PEAKS) continue
-                val intervals = DoubleArray(peaks.size - 1) { (times[peaks[it + 1]] - times[peaks[it]]) / 1e9 }
-                val median = intervals.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2.0 }
-                if (median < MIN_MEDIAN_S || median > MAX_MEDIAN_S) continue
-                val mean = intervals.average()
-                val deviation = sqrt(intervals.sumOf { (it - mean) * (it - mean) } / intervals.size)
-                val score = deviation / mean - 0.02 * minOf(peaks.size, 10)
-                if (best == null || score < best.score) best = Candidate(score, LongArray(peaks.size) { times[peaks[it]] }, p95, median)
+                val peaks = findPeaks(projected, from, sign, p95)
+                if (peaks.isEmpty()) continue
+                val candidate = candidate(peaks, p95, floor, gyroSource, sign) ?: continue
+                if (locked && (gyroSource != lockedGyro || sign != lockedSign)) continue
+                if (best == null || candidate.score < best.score) best = candidate
             }
         }
         val chosen = best ?: return
-        val confirmed = chosen.peaksNs.count { it <= nowNs - confirmNs }
-        for (index in emitted until confirmed) {
-            val peak = chosen.peaksNs[index]
-            val previous = if (index > 0) chosen.peaksNs[index - 1] else peak - (chosen.medianS * 1e9).toLong()
+        for (peak in chosen.peaksNs) {
+            if (peak > nowNs - confirmNs) break
+            val delivered = lastPeakNs
+            // The pull and return lobes of the very first rep can both stand out; a real second rep is never that close.
+            val separation = if (delivered != null && !secondDelivered) FIRST_PAIR_SEPARATION_NS else MIN_SEPARATION_NS
+            if (delivered != null && peak - delivered < separation) continue
+            val previous = delivered ?: (peak - (chosen.medianS * 1e9).toLong())
             pending.addLast(ProfiledMotionRepEvent(previous, peak, peak, (peak - previous) / 1_000_000L, chosen.amplitude, 0.0, 0.0, 0.7))
+            if (delivered != null) secondDelivered = true
+            lastPeakNs = peak
+            if (!locked) { locked = true; lockedGyro = chosen.gyroSource; lockedSign = chosen.sign }
         }
-        if (confirmed > emitted) emitted = confirmed
     }
 
-    private fun project(series: Array<Series>): DoubleArray {
-        val n = count
-        val mean = DoubleArray(3) { c -> var s = 0.0; for (i in 0 until n) s += series[c].data[i]; s / n }
+    /** Three or more peaks are ranked by interval regularity; one or two are only provisional and ranked by size. */
+    private fun candidate(peaks: IntArray, p95: Double, floor: Double, gyroSource: Boolean, sign: Int): Candidate? {
+        val peaksNs = LongArray(peaks.size) { times[peaks[it]] }
+        if (peaks.size == 1) return Candidate(PROVISIONAL_SCORE - p95 / floor, peaksNs, p95, DEFAULT_PERIOD_S, gyroSource, sign)
+        val intervals = DoubleArray(peaks.size - 1) { (peaksNs[it + 1] - peaksNs[it]) / 1e9 }
+        val median = intervals.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2.0 }
+        if (median < MIN_MEDIAN_S || median > MAX_MEDIAN_S) return null
+        if (peaks.size < REGULAR_PEAKS) return Candidate(PROVISIONAL_SCORE - p95 / floor, peaksNs, p95, median, gyroSource, sign)
+        val mean = intervals.average()
+        val deviation = sqrt(intervals.sumOf { (it - mean) * (it - mean) } / intervals.size)
+        return Candidate(deviation / mean - 0.02 * minOf(peaks.size, 10), peaksNs, p95, median, gyroSource, sign)
+    }
+
+    private fun project(series: Array<Series>, from: Int): DoubleArray {
+        val n = count - from
+        val mean = DoubleArray(3) { c -> var s = 0.0; for (i in 0 until n) s += series[c].data[from + i]; s / n }
         val cov = Array(3) { DoubleArray(3) }
         for (a in 0..2) for (b in a..2) {
             var s = 0.0
-            for (i in 0 until n) s += (series[a].data[i] - mean[a]) * (series[b].data[i] - mean[b])
+            for (i in 0 until n) s += (series[a].data[from + i] - mean[a]) * (series[b].data[from + i] - mean[b])
             cov[a][b] = s / n; cov[b][a] = s / n
         }
         var v = doubleArrayOf(1.0, 0.7, 0.3)
@@ -155,7 +196,7 @@ class CycleAxisRepDetector {
             val norm = sqrt(w.sumOf { it * it }).let { if (it == 0.0) 1.0 else it }
             v = DoubleArray(3) { w[it] / norm }
         }
-        val raw = DoubleArray(n) { i -> (0..2).sumOf { c -> (series[c].data[i] - mean[c]) * v[c] } }
+        val raw = DoubleArray(n) { i -> (0..2).sumOf { c -> (series[c].data[from + i] - mean[c]) * v[c] } }
         val smoothed = DoubleArray(n)
         var running = 0.0
         for (i in 0 until n) {
@@ -166,7 +207,8 @@ class CycleAxisRepDetector {
         return smoothed
     }
 
-    private fun findPeaks(p: DoubleArray, sign: Int, p95: Double): IntArray {
+    /** Returns indices into the full history; [base] is the history index of p[0]. */
+    private fun findPeaks(p: DoubleArray, base: Int, sign: Int, p95: Double): IntArray {
         val peaks = ArrayList<Int>()
         val w = PEAK_HALF_WINDOW
         for (i in w until p.size - w) {
@@ -176,9 +218,9 @@ class CycleAxisRepDetector {
             for (j in i - w..i + w) if (sign * p[j] > value) { isMax = false; break }
             if (!isMax) continue
             val last = peaks.lastOrNull()
-            if (last != null && times[i] - times[last] < MIN_SEPARATION_NS) {
-                if (value > sign * p[last]) peaks[peaks.size - 1] = i
-            } else peaks += i
+            if (last != null && times[base + i] - times[last] < MIN_SEPARATION_NS) {
+                if (value > sign * p[last - base]) peaks[peaks.size - 1] = base + i
+            } else peaks += base + i
         }
         return peaks.toIntArray()
     }
