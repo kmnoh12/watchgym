@@ -21,6 +21,17 @@ class CycleAxisRepDetectorTest {
         }
     }
 
+    private fun obliqueAcceleration(reps: Int, periodS: Double, amplitude: Double, hz: Int = 50): List<SensorSample> {
+        val axis = doubleArrayOf(0.40, 0.70, -0.59)
+        val total = reps * periodS + 3.0
+        return (0 until (total * hz).toInt()).map { i ->
+            val t = i.toDouble() / hz
+            val wave = if (t < reps * periodS) amplitude * sin(2 * PI * t / periodS) else 0.0
+            SensorSample(1_000_000_000L + (t * 1e9).toLong(), (wave * axis[0]).toFloat(), (wave * axis[1]).toFloat(),
+                (9.8 + wave * axis[2]).toFloat(), 0f, 0f, 0f, 3)
+        }
+    }
+
     private fun count(profileId: String, samples: List<SensorSample>): Int {
         val detector = ProfiledMotionRepDetector(ExerciseTrackingProfiles.resolve(profileId))
         detector.beginCounting()
@@ -35,6 +46,30 @@ class CycleAxisRepDetectorTest {
     @Test
     fun aMotionlessWristCountsNothing() {
         assertEquals(0, count("cable_seated_row", obliqueSet(0, 2.3, 0.8)))
+    }
+
+    @Test
+    fun tinyRegularMotionIsNotARow() {
+        assertEquals(0, count("cable_seated_row", obliqueSet(10, 2.3, 0.03)))
+        assertEquals(0, count("cable_seated_row", obliqueSet(10, 2.3, 0.2)))
+        assertEquals(0, count("cable_seated_row", obliqueAcceleration(10, 2.3, 0.03)))
+        assertEquals(0, count("cable_seated_row", obliqueAcceleration(10, 2.3, 0.22)))
+    }
+
+    @Test
+    fun sensorNoiseAloneCountsNothing() {
+        val random = kotlin.random.Random(7)
+        val noise = (0 until 1250).map { i ->
+            fun n(scale: Double) = ((random.nextDouble() - 0.5) * 2 * scale).toFloat()
+            SensorSample(1_000_000_000L + i * 20_000_000L, n(0.02), n(0.02), 9.8f + n(0.02), n(0.002), n(0.002), n(0.002), 3)
+        }
+        assertEquals(0, count("cable_seated_row", noise))
+    }
+
+    @Test
+    fun aRealSizedRowStrokeIsStillCountedFromGyroOrAcceleration() {
+        assertEquals(10, count("cable_seated_row", obliqueSet(10, 2.3, 0.83)))
+        assertEquals(10, count("cable_seated_row", obliqueAcceleration(10, 2.3, 3.4)))
     }
 
     @Test

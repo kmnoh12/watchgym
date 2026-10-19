@@ -10,6 +10,10 @@ import kotlin.math.sqrt
  * Every [STEP_NS] the whole history since [beginCounting] is re-analysed: the principal axis of the smoothed gyroscope and of
  * the smoothed dynamic acceleration is found, the more regular candidate (lowest interval variation) is kept, and its
  * peaks are counted. A peak is final [CONFIRM_NS] after it happened, so reps appear 1-2 s late. The count never decreases.
+ * Peaks are relative to the set's own 95th percentile, so an absolute floor ([GYRO_AMPLITUDE_FLOOR], [DYN_AMPLITUDE_FLOOR])
+ * refuses sets whose motion is too small to be a rep of these exercises (a still wrist or a few-centimetre fidget).
+ * The floors sit well below the weakest real sets seen: one Watch8 cable seated row (gyro 0.83 rad/s) and MM-Fit rows,
+ * lateral raises and triceps extensions (gyro min 0.72 / dynamic acceleration min 3.4 m/s^2); they are not tuned per user.
  * Constants are frozen with this algorithm ID (cycle-axis-return-family-v1); changing them requires a new version.
  * Developed on MM-Fit left-wrist data plus one Galaxy Watch8 cable seated row; it is not a validated Watch8 accuracy claim.
  */
@@ -30,6 +34,8 @@ class CycleAxisRepDetector {
         private const val MIN_PEAKS = 3
         private const val MIN_MEDIAN_S = 1.0
         private const val MAX_MEDIAN_S = 7.0
+        private const val GYRO_AMPLITUDE_FLOOR = 0.4 // rad/s
+        private const val DYN_AMPLITUDE_FLOOR = 1.5 // m/s^2
     }
 
     private class TrailingMean(private val window: Int) {
@@ -111,6 +117,7 @@ class CycleAxisRepDetector {
             val projected = project(series)
             val sorted = projected.map { abs(it) }.sorted()
             val p95 = max(sorted[(0.95 * (sorted.size - 1)).toInt()], 1e-9)
+            if (p95 < (if (series === gyro) GYRO_AMPLITUDE_FLOOR else DYN_AMPLITUDE_FLOOR)) continue
             for (sign in intArrayOf(1, -1)) {
                 val peaks = findPeaks(projected, sign, p95)
                 if (peaks.size < MIN_PEAKS) continue
