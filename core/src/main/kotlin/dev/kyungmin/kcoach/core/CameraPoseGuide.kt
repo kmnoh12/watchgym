@@ -107,7 +107,7 @@ object CameraPoseGuide {
             MeasurementRecipe.SQUAT -> CameraPoseFamily.SQUAT_SIDE
             MeasurementRecipe.PUSH_UP -> CameraPoseFamily.PLANK_SIDE
             MeasurementRecipe.SIT_UP -> CameraPoseFamily.SITUP_LYING_SIDE
-            MeasurementRecipe.PULL_UP, MeasurementRecipe.MANUAL -> null
+            MeasurementRecipe.PULL_UP, MeasurementRecipe.MANUAL, MeasurementRecipe.LOADED_HINGE, MeasurementRecipe.LOADED_LUNGE, MeasurementRecipe.HIP_EXTENSION, MeasurementRecipe.CORE_FLEXION, MeasurementRecipe.CORE_ROTATION, MeasurementRecipe.CORE_EXTENSION, MeasurementRecipe.DIP, MeasurementRecipe.SQUAT_PRESS -> null
         }
     }
 

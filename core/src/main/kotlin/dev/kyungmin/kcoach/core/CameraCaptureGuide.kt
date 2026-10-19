@@ -144,7 +144,7 @@ data class CameraCaptureGuide(val id: String, val direction: String, val framing
             MeasurementRecipe.SQUAT -> "곧게 선 상태에서 시작"
             MeasurementRecipe.PUSH_UP -> "팔을 편 플랭크 자세에서 시작"
             MeasurementRecipe.SIT_UP -> "무릎을 세우고 누운 상태에서 시작"
-            MeasurementRecipe.PULL_UP, MeasurementRecipe.MANUAL -> null
+            MeasurementRecipe.PULL_UP, MeasurementRecipe.MANUAL, MeasurementRecipe.LOADED_HINGE, MeasurementRecipe.LOADED_LUNGE, MeasurementRecipe.HIP_EXTENSION, MeasurementRecipe.CORE_FLEXION, MeasurementRecipe.CORE_ROTATION, MeasurementRecipe.CORE_EXTENSION, MeasurementRecipe.DIP, MeasurementRecipe.SQUAT_PRESS -> null
         }
     }
 }

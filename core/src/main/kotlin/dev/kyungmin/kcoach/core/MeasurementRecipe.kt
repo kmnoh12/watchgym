@@ -60,6 +60,24 @@ enum class MeasurementRecipe(
     PULL_UP("풀업", MeasurementEngine.TRANSLATION,
         "바를 잡고 팔을 편 매달린 자세", "끌어올림 → 정점 → 매달린 자세 복귀", MusclePhase.CONCENTRIC,
         setOf(11, 12, 13, 14, 15, 16, 23, 24)),
+    // Wrist-only catalog recipes: no camera guide or pose counter is available.
+    LOADED_HINGE("힙 힌지", MeasurementEngine.TRANSLATION,
+        "중량을 잡은 기준 위치", "몸통 숙임 → 전환 → 기준 위치 복귀", MusclePhase.ECCENTRIC, emptySet()),
+    LOADED_LUNGE("런지·스텝업", MeasurementEngine.TRANSLATION,
+        "양발을 지지한 기준 위치", "한쪽 다리 이동·굽힘 → 전환 → 기준 위치 복귀", MusclePhase.UNKNOWN, emptySet()),
+    HIP_EXTENSION("힙쓰러스트", MeasurementEngine.TRANSLATION,
+        "골반을 낮춘 기준 위치", "골반 올림 → 전환 → 기준 위치 복귀", MusclePhase.CONCENTRIC, emptySet()),
+    CORE_FLEXION("코어 굽힘", MeasurementEngine.TRANSLATION,
+        "몸통을 편 기준 위치", "몸통 굽힘 → 전환 → 기준 위치 복귀", MusclePhase.CONCENTRIC, emptySet()),
+    CORE_ROTATION("코어 회전", MeasurementEngine.TRANSLATION,
+        "선택한 방향의 기준 위치", "반대 방향 회전 → 전환 → 기준 위치 복귀", MusclePhase.UNKNOWN, emptySet()),
+    CORE_EXTENSION("코어 왕복", MeasurementEngine.TRANSLATION,
+        "팔을 몸통 가까이 둔 기준 위치", "팔 뻗음 → 전환 → 기준 위치 복귀", MusclePhase.UNKNOWN, emptySet()),
+    DIP("딥스", MeasurementEngine.TRANSLATION,
+        "팔을 편 지지 위치", "내려감 → 전환 → 팔을 편 위치 복귀", MusclePhase.ECCENTRIC, emptySet()),
+    SQUAT_PRESS("스쿼트 프레스", MeasurementEngine.TRANSLATION,
+        "중량을 어깨에 둔 선 자세", "스쿼트 → 일어서며 밀기 → 기준 위치 복귀", MusclePhase.UNKNOWN, emptySet()),
+
     ;
 
     /** Counting one observed wrist does not require the other arm or every posture metric. */
@@ -71,7 +89,7 @@ enum class MeasurementRecipe(
         return when (this) {
             SQUAT -> cameraLandmarks
             LATERAL_RAISE -> setOf(shoulder, elbow, wrist, hip)
-            MANUAL -> emptySet()
+            MANUAL, LOADED_HINGE, LOADED_LUNGE, HIP_EXTENSION, CORE_FLEXION, CORE_ROTATION, CORE_EXTENSION, DIP, SQUAT_PRESS -> emptySet()
             else -> setOf(shoulder, elbow, wrist)
         }
     }

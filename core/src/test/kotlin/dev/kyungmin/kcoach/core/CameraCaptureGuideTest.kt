@@ -29,7 +29,7 @@ class CameraCaptureGuideTest {
             CameraTimestampSource.PHONE_ELAPSED_REALTIME, "fixture-clock", listOf(image), listOf(world.map { it.copy(x = (it.x + it.z) / kotlin.math.sqrt(2.0), z = (it.z - it.x) / kotlin.math.sqrt(2.0)) }), true)
     }
     @Test fun allReviewedExercisesHaveAnExplicitGuideAndRequiredAnatomicalJoints() {
-        assertEquals(43, ExerciseMeasurementContracts.standard.size)
+        assertEquals(195, ExerciseMeasurementContracts.standard.size)
         ExerciseMeasurementContracts.standard.keys.forEach { id ->
             for (left in listOf(true, false)) {
                 val guide = CameraCaptureGuide.forExercise(id, left)
@@ -45,7 +45,7 @@ class CameraCaptureGuideTest {
                 val guide = CameraCaptureGuide.forExercise(id, left)
                 assertTrue(guide.headline.isNotBlank() && guide.headline.length <= 24, "$id ${guide.headline}")
                 val hint = guide.startHint
-                if (ExerciseMeasurementContracts.resolve(id).recipe in setOf(MeasurementRecipe.MANUAL, MeasurementRecipe.PULL_UP)) assertNull(hint, id)
+                if (ExerciseMeasurementContracts.resolve(id).recipe in setOf(MeasurementRecipe.MANUAL, MeasurementRecipe.PULL_UP, MeasurementRecipe.LOADED_HINGE, MeasurementRecipe.LOADED_LUNGE, MeasurementRecipe.HIP_EXTENSION, MeasurementRecipe.CORE_FLEXION, MeasurementRecipe.CORE_ROTATION, MeasurementRecipe.CORE_EXTENSION, MeasurementRecipe.DIP, MeasurementRecipe.SQUAT_PRESS)) assertNull(hint, id)
                 else assertTrue(hint != null && hint.length <= 26, "$id $hint")
             }
         }

@@ -67,10 +67,10 @@ class CameraPoseGuideTest {
     }
 
     @Test fun everyReviewedExerciseResolvesToAFamilyOrExplicitlyNone() {
-        val manual = setOf("pull_up", "assisted_pull_up", "leg_press", "seated_leg_curl", "leg_extension", "hip_adduction", "hip_abduction")
+        val withoutGuide = setOf(MeasurementRecipe.MANUAL, MeasurementRecipe.PULL_UP, MeasurementRecipe.LOADED_HINGE, MeasurementRecipe.LOADED_LUNGE, MeasurementRecipe.HIP_EXTENSION, MeasurementRecipe.CORE_FLEXION, MeasurementRecipe.CORE_ROTATION, MeasurementRecipe.CORE_EXTENSION, MeasurementRecipe.DIP, MeasurementRecipe.SQUAT_PRESS)
         ExerciseMeasurementContracts.standard.keys.forEach { id ->
             val family = CameraPoseGuide.familyFor(id)
-            if (id in manual) assertNull(family, id) else assertNotNull(family, id)
+            if (ExerciseMeasurementContracts.resolve(id).recipe in withoutGuide) assertNull(family, id) else assertNotNull(family, id)
         }
         assertEquals(CameraPoseFamily.STAND_ARMS_DOWN_SIDE, CameraPoseGuide.familyFor("dumbbell_curl"))
         assertEquals(CameraPoseFamily.SQUAT_SIDE, CameraPoseGuide.familyFor("squat"))

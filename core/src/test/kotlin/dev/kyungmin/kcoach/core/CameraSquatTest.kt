@@ -4,7 +4,7 @@ import kotlin.test.*
 
 class CameraSquatTest {
     @Test fun squatVariantsShareTheCameraRecipeAndTheCycleAxisWristEngine() {
-        assertEquals(50, ExerciseCapabilityMatrix.standardExerciseIds().size)
+        assertEquals(202, ExerciseCapabilityMatrix.standardExerciseIds().size)
         for (id in listOf("squat", "barbell_squat", "front_squat", "goblet_squat", "smith_squat")) {
             assertEquals(MeasurementRecipe.SQUAT, ExerciseMeasurementContracts.resolve(id).recipe)
             assertEquals(CameraMotion.SQUAT_KNEE_FLEXION, CameraCaptureGuide.forExercise(id, true).metric)
