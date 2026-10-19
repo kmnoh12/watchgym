@@ -19,7 +19,7 @@ class CameraSquatEntryUiTest {
             val context = androidx.compose.ui.platform.LocalContext.current
             val exercise = dev.kyungmin.kcoach.phone.ExerciseDefinition("squat", "스쿼트", "하체", "하체", "맨몸")
             CalibrationScreen(
-                CalibrationUi(listOf(LibraryEntry(exercise, 0, "스쿼트", 0)), "전신을 촬영해요",
+                CalibrationUi(listOf(LibraryEntry(exercise, 0, "스쿼트 계열", 0)), "전신을 촬영해요",
                     mapOf("squat" to "전신 촬영"), setOf("squat")),
                 { false }, { CalibrationButtonUi("보정 종료·저장", true) },
                 CalibrationActions({}, {}, { opened = true }), { android.view.View(context) },

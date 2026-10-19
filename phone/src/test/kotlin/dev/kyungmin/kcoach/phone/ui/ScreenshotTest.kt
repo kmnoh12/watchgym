@@ -99,7 +99,7 @@ class ScreenshotTest {
             val (order, title) = dev.kyungmin.kcoach.core.ExerciseTaxonomy.section(item.bodyCategory, item.pattern)
             LibraryEntry(item, order, title, dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyRank(item.bodyCategory))
         }
-        LibraryScreen(entries, setOf("pull_up", "lat_pull_down"), LibraryActions({}, {}, {})) { android.view.View(context) }
+        LibraryScreen(entries, setOf("pull_up", "lat_pull_down"), LibraryActions({}, {}, {}), FavoriteUi(setOf("machine_fly", "dumbbell_pullover")) {}) { android.view.View(context) }
     }
 
     @Test

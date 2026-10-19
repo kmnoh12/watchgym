@@ -32,6 +32,7 @@ import dev.kyungmin.kcoach.phone.ui.KColors
 import dev.kyungmin.kcoach.phone.ui.KIcon
 import dev.kyungmin.kcoach.phone.ui.RecordSetUi
 import dev.kyungmin.kcoach.phone.ui.LibraryActions
+import dev.kyungmin.kcoach.phone.ui.FavoriteUi
 import dev.kyungmin.kcoach.phone.ui.LibraryEntry
 import dev.kyungmin.kcoach.phone.ui.LibraryScreen
 import dev.kyungmin.kcoach.phone.ui.Overlay
@@ -876,7 +877,11 @@ class MainActivity : ComponentActivity() {
                     val (order, title) = ExerciseTaxonomy.section(item.bodyCategory, item.pattern)
                     LibraryEntry(item, order, title, ExerciseTaxonomy.bodyRank(item.bodyCategory))
                 }
-                LibraryScreen(entries, frequent, actions) { exerciseAnimationView(it, 56, compact = true) }
+                val favoriteStore = remember { FavoriteExercises(this@MainActivity) }
+                var favoriteIds by remember { mutableStateOf(favoriteStore.all()) }
+                LibraryScreen(entries, frequent, actions, FavoriteUi(favoriteIds) { id -> favoriteIds = favoriteStore.toggle(id) }) {
+                    exerciseAnimationView(it, 56, compact = true)
+                }
             }
         })
     }
@@ -2456,7 +2461,7 @@ class MainActivity : ComponentActivity() {
 
     private fun anatomyPlaceholder(heightDp: Int): View = FrameLayout(this).apply {
         minimumHeight = dp(heightDp)
-        background = rounded(Color.rgb(30, 29, 27), 20)
+        background = rounded(Color.rgb(52, 50, 46), 20)
         outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
         clipToOutline = true
     }
