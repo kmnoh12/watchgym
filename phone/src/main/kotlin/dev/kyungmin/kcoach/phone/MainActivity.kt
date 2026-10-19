@@ -2034,7 +2034,6 @@ class MainActivity : ComponentActivity() {
             "START_DIRECTION_WAITING" -> "준비 손목 방향 확인 · 2초 유지 또는 워치에서 직접 시작"
             "WORKING_START_CONFIRMED" -> "시작 손목 방향 확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
             "WORKING_START_BYPASSED" -> "직접 시작 · 방향 미확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
-            "WORKING_START_UNCHECKED" -> "시작 방향 미확인 · ${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"
             "RESTING" -> "${observed.setIndex}세트 종료 · 다음 세트: ${observed.setIndex + 1}세트$weightText · ${targetReps}회 · ${heartRateText(heartRate)}"
             "SET_COMPLETE" -> "세트 완료 · ${reps}회$weightText · ${heartRateText(heartRate)}"
             else -> "${reps}/${targetReps}회$weightText · ${heartRateText(heartRate)}"

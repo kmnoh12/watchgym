@@ -49,7 +49,6 @@ internal fun WorkoutProfileTheme(content: @Composable () -> Unit) {
 internal fun WorkoutProfileEditor(profile: WorkoutProfile, previous: WorkoutWearingSelection?,
     back: () -> Unit, save: (DeviceWorkoutProfile) -> Unit) {
     var side by rememberSaveable { mutableStateOf(previous?.side) }
-    var placement by rememberSaveable { mutableStateOf(previous?.placement) }
     ProfileEditor(profile, onDismiss = back, extraContent = {
         Text("평소 워치 착용", color = KColors.White, fontSize = 17.sp)
         Text("새 운동의 기본값이에요. 진행 중인 운동의 착용 조건은 바뀌지 않아요.", color = KColors.Muted, fontSize = 13.sp)
@@ -59,17 +58,11 @@ internal fun WorkoutProfileEditor(profile: WorkoutProfile, previous: WorkoutWear
                     border = BorderStroke(1.dp, if (side == value) KColors.Accent else KColors.Hairline)) { Text(label) }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("OUTSIDE" to "손등 쪽", "INSIDE" to "손바닥 쪽").forEach { (value, label) ->
-                OutlinedButton(onClick = { placement = value }, modifier = Modifier.weight(1f), shape = KShape.Control,
-                    border = BorderStroke(1.dp, if (placement == value) KColors.Accent else KColors.Hairline)) { Text(label) }
-            }
-        }
-        TextButton(onClick = { side = null; placement = null }) { Text("착용 상태 미설정") }
+        Text("워치는 손등 쪽에 착용해 주세요.", color = KColors.Muted, fontSize = 13.sp)
+        TextButton(onClick = { side = null }) { Text("착용 상태 미설정") }
         Text("프로필은 폰에 저장해요. 이전 운동에 저장된 신체 정보는 바뀌지 않아요.",
             color = KColors.Muted, fontSize = 12.sp)
     }) { draft ->
-        require((side == null) == (placement == null))
-        save(DeviceWorkoutProfile(draft, if (side == null) null else WorkoutWearingSelection(requireNotNull(side), requireNotNull(placement))))
+        save(DeviceWorkoutProfile(draft, side?.let { WorkoutWearingSelection(it, "OUTSIDE") }))
     }
 }

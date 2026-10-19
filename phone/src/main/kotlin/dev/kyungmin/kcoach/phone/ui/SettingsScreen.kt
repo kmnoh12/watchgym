@@ -76,11 +76,6 @@ fun SettingsScreen(
                 Text("내 운동 프로필 · 워치 착용", color = KColors.White)
             }
             Text("신체 정보와 평소 착용 상태를 폰에 저장해요. 로그인 없이 설정할 수 있어요.", color = KColors.Muted, fontSize = 13.sp)
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(onClick = actions.posture, modifier = Modifier.fillMaxWidth().height(50.dp), shape = KShape.Control) {
-                Text("운동별 자세", color = KColors.White)
-            }
-            Text("운동마다 평소 하는 그립이나 시작 자세를 지정해요.", color = KColors.Muted, fontSize = 13.sp)
             Spacer(Modifier.height(24.dp))
             OutlinedButton(onClick = actions.diagnostics, modifier = Modifier.fillMaxWidth().height(50.dp), shape = KShape.Control) {
                 Text("오류 기록 저장", color = KColors.White)

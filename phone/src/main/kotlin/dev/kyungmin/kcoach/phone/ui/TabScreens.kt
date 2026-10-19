@@ -460,7 +460,6 @@ private fun UpdateButton(action: OtaAction, label: String, onClick: () -> Unit) 
 }
 
 private val MENU_TIPS = listOf(
-    "설정 > 운동별 자세에서 평소 하는 그립이나 자세를 지정하면\n횟수 인식이 더 정확해져요.",
     "워치를 손목에 단단히 고정하면\n센서가 움직임을 더 정확하게 읽어요.",
     "운동 전 측정·보정을 해 두면\n내 동작에 맞춰 횟수를 세어줘요.",
     "기록은 로그인 없이 이 폰에만 저장돼요.\n센서 기록은 운동과 보정 중에만 켜져요.",
