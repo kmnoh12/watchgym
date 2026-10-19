@@ -353,6 +353,7 @@ class PhoneWearListenerService : WearableListenerService() {
             persistCalibrationResult(manifest, rawDocument, exerciseId, exerciseName)
         }
         val personal = prefs.getString("personalProfile:$exerciseId", null)
+            ?.takeIf { PersonalizationSetting.isEnabled(this) }
             ?.let { runCatching { PersonalCalibrationProfileCodec.decode(it) }.getOrNull() }
         val generic = ExerciseTrackingProfiles.resolve(exerciseId, exerciseName)
         val recordedSnapshot = manifest.payload[WirePayloadKeys.TRACKING_PROFILE_SNAPSHOT]
@@ -474,20 +475,11 @@ class PhoneWearListenerService : WearableListenerService() {
      * MainActivity being visible when background capture analysis completes.
      */
     private fun sendPersonalProfile(encoded: String) {
-        emulatorBridge?.send(WearSync.PATH_PERSONAL_PROFILE, encoded)
-        Wearable.getNodeClient(this).connectedNodes.addOnSuccessListener { nodes ->
-            nodes.forEach { node ->
-                Wearable.getMessageClient(this).sendMessage(
-                    node.id,
-                    WearSync.PATH_PERSONAL_PROFILE,
-                    encoded.toByteArray(),
-                ).addOnFailureListener {
-                    Log.w(TAG, "personal profile delivery failed node=${node.id}", it)
-                }
-            }
-        }.addOnFailureListener {
-            Log.w(TAG, "personal profile node lookup failed", it)
-        }
+        // While personalization is off the watch must not hold the profile, so the same call removes it instead.
+        val (path, payload) = if (PersonalizationSetting.isEnabled(this)) WearSync.PATH_PERSONAL_PROFILE to encoded
+        else WearSync.PATH_PERSONAL_PROFILE_DELETE to (runCatching { PersonalCalibrationProfileCodec.decode(encoded).exerciseId }.getOrNull() ?: return)
+        emulatorBridge?.send(path, payload)
+        PersonalizationSetting.deliver(this, path, payload)
     }
 
     private fun finishAck(manifest: dev.kyungmin.kcoach.core.WireEnvelope) {
