@@ -371,10 +371,15 @@ private fun ExercisePage(
             }
         }
         Spacer(Modifier.height(6.dp))
+        // Removes the last set that is not done yet, so finished work is never deleted from here.
+        val removableSet = exercise.sets.indexOfLast { !it.completed }.takeIf { exercise.sets.size > 1 }
         Row {
             TextAction("세트 추가", KColors.Accent, Modifier.weight(1f), KIcon.Plus) { actions.onAddSet(exerciseIndex) }
-            TextAction("모든 세트 완료", KColors.Accent, Modifier.weight(1f), KIcon.Check) { actions.onAllSetsDone(exerciseIndex) }
+            TextAction("세트 삭제", if (removableSet != null) KColors.Soft else KColors.Faint, Modifier.weight(1f), KIcon.Minus) {
+                removableSet?.let { actions.onRemoveSet(exerciseIndex, it) }
+            }
         }
+        TextAction("모든 세트 완료", KColors.Accent, Modifier.fillMaxWidth(), KIcon.Check) { actions.onAllSetsDone(exerciseIndex) }
         if (exerciseIndex < model.exercises.lastIndex) {
             TextAction("다음 운동", KColors.White, Modifier.fillMaxWidth(), KIcon.Forward, iconAfter = true) { onNextExercise() }
         }
