@@ -227,6 +227,7 @@ class MainActivity : ComponentActivity() {
     private var workoutComposeView: ComposeView? = null
     private var workoutComposeWorkout: ActiveWorkout? = null
     private val workoutVersion = mutableIntStateOf(0)
+    private var removedPlanSet: Pair<String, PlannedSetSnapshot>? = null
     private var lastRemovedSet: Triple<RoutineExercise, Int, PlannedSet>? = null
     private var lastRestCueSecond = -1
     private val restTone by lazy { android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80) }
@@ -1500,7 +1501,14 @@ class MainActivity : ComponentActivity() {
 
     /** Only workout edits and position changes save state and update the watch. */
     private fun saveWorkoutChanges(workout: ActiveWorkout, forceRebuild: Boolean = false): Boolean {
-        if (routines.any { it === workout.routine } && !saveRoutineLibrary()) return false
+        val prepared = runCatching {
+            workoutSnapshot(workout) // Validate before any library write as well.
+            if (routines.any { it === workout.routine }) check(saveRoutineLibrary())
+        }.onFailure { Log.e(EVENT_TAG, "workout edit validation or library save failed", it) }.isSuccess
+        if (!prepared) {
+            finishWorkoutEdit(workout, false)
+            return false
+        }
         if (activeWorkout === workout) {
             if (!persistActiveWorkout(workout)) return false
             if (workout.exerciseIndex >= workout.routine.exercises.size) {
@@ -1508,6 +1516,8 @@ class MainActivity : ComponentActivity() {
                 return true
             }
             syncWorkingSet(workout)
+        } else {
+            finishWorkoutEdit(workout, true)
         }
         showActiveWorkout(forceRebuild = forceRebuild)
         return true
@@ -1784,6 +1794,87 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    // Keep the pre-edit state until the whole edit has been durably accepted.
+    private var pendingWorkoutRollback: Pair<ActiveWorkout, () -> Unit>? = null
+
+    private fun beginWorkoutEdit(workout: ActiveWorkout) {
+        if (pendingWorkoutRollback?.first === workout) return
+        val exercises = workout.routine.exercises.map { item ->
+            item to item.copy(sets = item.sets.map { it.copy() }.toMutableList())
+        }
+        val before = workout.copy(
+            performedRepsByExercise = workout.performedRepsByExercise.toMutableMap(),
+            analyses = workout.analyses.toMutableMap(),
+        )
+        val restStart = activeRestStartAtMs
+        val restEnd = activeRestEndAtMs
+        val pausedRest = pausedRestRemainingMs
+        val liveKey = lastCompletedLiveKey
+        val removed = lastRemovedSet
+        pendingWorkoutRollback = workout to {
+            workout.routine.exercises.clear()
+            exercises.forEach { (item, saved) ->
+                item.restSeconds = saved.restSeconds
+                item.sets.clear()
+                item.sets.addAll(saved.sets)
+                workout.routine.exercises.add(item)
+            }
+            workout.exerciseIndex = before.exerciseIndex
+            workout.setIndex = before.setIndex
+            workout.selectedEditSetIndex = before.selectedEditSetIndex
+            workout.phase = before.phase
+            workout.lastCompletedSetKey = before.lastCompletedSetKey
+            workout.performedRepsByExercise.clear()
+            workout.performedRepsByExercise.putAll(before.performedRepsByExercise)
+            workout.analyses.clear()
+            workout.analyses.putAll(before.analyses)
+            activeRestStartAtMs = restStart
+            activeRestEndAtMs = restEnd
+            pausedRestRemainingMs = pausedRest
+            lastCompletedLiveKey = liveKey
+            lastRemovedSet = removed
+        }
+    }
+
+    private fun finishWorkoutEdit(workout: ActiveWorkout, saved: Boolean) {
+        val rollback = pendingWorkoutRollback?.takeIf { it.first === workout }?.second
+        if (saved) {
+            if (rollback != null) pendingWorkoutRollback = null
+            return
+        }
+        rollback?.invoke()
+        pendingWorkoutRollback = null
+        Toast.makeText(this, "변경을 저장하지 못했어요. 이전 상태로 되돌렸어요", Toast.LENGTH_SHORT).show()
+        bumpWorkoutUi()
+    }
+
+    /** Active plan intents return durable snapshots; preview/library editing remains separate. */
+    private fun editActivePlan(workout: ActiveWorkout, edit: PhonePlanEdit): Boolean {
+        val result = PhoneSessionController(sessionStore) { path, payload ->
+            PhoneWorkoutService.send(this, path, payload)
+        }.editPlan({ workoutSnapshot(workout) }, edit)
+        val applied = result.getOrElse {
+            Toast.makeText(this, "변경을 저장하지 못했어요. 이전 상태로 되돌렸어요", Toast.LENGTH_SHORT).show()
+            activeLiveStatus?.apply {
+                text = "세션 저장에 실패했어요 · 변경 전 상태를 유지해요"
+                setTextColor(amber)
+            }
+            return false
+        }
+        finishWorkoutEdit(workout, true)
+        val restStartedAt = activeRestStartAtMs
+        applySnapshotToWorkout(workout, applied.snapshot)
+        // Preserve the running rest's progress origin when changing a future preset.
+        activeRestStartAtMs = restStartedAt
+        workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(
+            workout.routine.exercises.getOrNull(workout.exerciseIndex)?.sets?.lastIndex?.coerceAtLeast(0) ?: 0)
+        if (applied.syncFailure != null) {
+            Toast.makeText(this, "변경은 저장했지만 워치 동기화에 실패했어요", Toast.LENGTH_SHORT).show()
+        }
+        bumpWorkoutUi()
+        return true
+    }
+
     private val workoutActions = object : WorkoutActions {
         private fun workout() = activeWorkout ?: previewWorkout
         private fun exercise(index: Int) = workout()?.routine?.exercises?.getOrNull(index)
@@ -1817,16 +1908,20 @@ class MainActivity : ComponentActivity() {
             val routineExercise = exercise(exerciseIndex) ?: return
             val targets = if (applyAll) routineExercise.sets.filter { !it.completed } + listOfNotNull(routineExercise.sets.getOrNull(setIndex))
             else listOfNotNull(routineExercise.sets.getOrNull(setIndex))
+            val weight = if (field == SetField.WEIGHT) {
+                val parsed = if (value.isBlank()) 0.0 else value.toDoubleOrNull()
+                if (parsed == null || !parsed.isFinite() || parsed < 0.0) {
+                    Log.w(EVENT_TAG, "invalid workout weight rejected")
+                    Toast.makeText(this@MainActivity, "무게는 0 이상의 유한한 숫자로 입력해주세요", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (workout.usePounds) parsed / 2.20462 else parsed
+            } else null
+            beginWorkoutEdit(workout)
             targets.distinct().forEach { set ->
                 when (field) {
                     SetField.WEIGHT -> {
-                        val parsed = value.toDoubleOrNull()
-                        set.weightKg = when {
-                            value.isBlank() -> 0.0
-                            parsed == null -> set.weightKg
-                            workout.usePounds -> parsed / 2.20462
-                            else -> parsed
-                        }
+                        set.weightKg = weight
                     }
                     SetField.REPS -> {
                         val reps = value.toIntOrNull()?.takeIf { it in 0..9_999 } ?: return@forEach
@@ -1866,6 +1961,7 @@ class MainActivity : ComponentActivity() {
                 }
                 requestSetCompletion(workout, routineExercise, setIndex, plannedSet)
             } else {
+                beginWorkoutEdit(workout)
                 plannedSet.completed = false
                 val current = workout.performedRepsByExercise[routineExercise.exercise.id] ?: 0
                 workout.performedRepsByExercise[routineExercise.exercise.id] =
@@ -1907,9 +2003,14 @@ class MainActivity : ComponentActivity() {
 
         override fun onAddSet(exerciseIndex: Int) {
             val routineExercise = exercise(exerciseIndex) ?: return
+            val workout = workout() ?: return
+            if (activeWorkout === workout) {
+                editActivePlan(workout, PhonePlanEdit.AddSet(exerciseIndex))
+                return
+            }
+            beginWorkoutEdit(workout)
             val source = routineExercise.sets.lastOrNull() ?: PlannedSet(null, 10)
             routineExercise.sets += PlannedSet(source.weightKg, source.targetReps, gripType = source.gripType, restSeconds = source.restSeconds)
-            val workout = workout() ?: return
             if (!persistActiveWorkout(workout)) return
             if (activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
             bumpWorkoutUi()
@@ -1919,6 +2020,20 @@ class MainActivity : ComponentActivity() {
             val workout = workout() ?: return
             val routineExercise = exercise(exerciseIndex) ?: return
             if (routineExercise.sets.size <= 1 || setIndex !in routineExercise.sets.indices) return
+            if (activeWorkout === workout) {
+                val removed = runCatching { workoutSnapshot(workout).plannedSets.single {
+                    it.exerciseIndex == exerciseIndex && it.setIndex == setIndex
+                } }.getOrElse {
+                    Log.e(EVENT_TAG, "remove set snapshot failed", it)
+                    Toast.makeText(this@MainActivity, "세트 구성을 읽지 못해 삭제하지 않았어요", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (editActivePlan(workout, PhonePlanEdit.RemoveSet(exerciseIndex, setIndex))) {
+                    removedPlanSet = workout.sessionId to removed
+                    lastRemovedSet = null
+                }
+                return
+            }
             val measuring = routineExercise.sets.getOrNull(workout.setIndex)
             val removed = routineExercise.sets.removeAt(setIndex)
             lastRemovedSet = Triple(routineExercise, setIndex, removed)
@@ -1932,6 +2047,12 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onUndoRemoveSet() {
+            val active = activeWorkout
+            val removed = removedPlanSet
+            if (active != null && removed?.first == active.sessionId) {
+                if (editActivePlan(active, PhonePlanEdit.RestoreSet(removed.second))) removedPlanSet = null
+                return
+            }
             val (routineExercise, index, set) = lastRemovedSet ?: return
             lastRemovedSet = null
             val workout = workout() ?: return
@@ -1954,8 +2075,14 @@ class MainActivity : ComponentActivity() {
                 items = listOf("기본값" to "운동 기본 휴식 ${routineExercise.restSeconds}초") +
                     listOf(30, 45, 60, 90, 120, 150, 180).map { "${it}초" to "" },
             ) { value ->
-                set.restSeconds = value.removeSuffix("초").toIntOrNull()
-                workout()?.let(::persistActiveWorkout)
+                val workout = workout() ?: return@showChoiceSheet
+                val seconds = value.removeSuffix("초").toIntOrNull()
+                if (activeWorkout === workout) {
+                    editActivePlan(workout, PhonePlanEdit.SetRest(exerciseIndex, setIndex, seconds))
+                    return@showChoiceSheet
+                }
+                set.restSeconds = seconds
+                persistActiveWorkout(workout)
                 bumpWorkoutUi()
             }
         }
@@ -2240,8 +2367,16 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Clock, "휴식 시간", featured = true, value = "${routineExercise.restSeconds}초") {
                         showChoiceSheet("휴식 시간", selected = "${routineExercise.restSeconds}초", items = listOf("30초" to "짧은 휴식", "60초" to "일반 휴식", "90초" to "근비대 기본", "120초" to "고중량 휴식", "160초" to "긴 휴식")) { value ->
-                            routineExercise.restSeconds = value.removeSuffix("초").toInt()
-                            saveWorkoutChanges(workout)
+                            val seconds = value.removeSuffix("초").toInt()
+                            if (activeWorkout === workout) {
+                                if (editActivePlan(workout, PhonePlanEdit.ExerciseRest(pageIndex, seconds))) {
+                                    if (routines.any { it === workout.routine }) saveRoutineLibrary()
+                                    showActiveWorkout()
+                                }
+                            } else {
+                                routineExercise.restSeconds = seconds
+                                saveWorkoutChanges(workout)
+                            }
                         }
                     },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) {
@@ -3125,19 +3260,25 @@ class MainActivity : ComponentActivity() {
     )
 
     private fun persistActiveWorkout(workout: ActiveWorkout): Boolean {
-        if (previewWorkout === workout && activeWorkout !== workout) {
-            return if (routines.any { it === workout.routine }) saveRoutineLibrary() else true
+        val saved = runCatching {
+            if (previewWorkout === workout && activeWorkout !== workout) {
+                workoutSnapshot(workout) // Validate preview edits before saving the library too.
+                return@runCatching if (routines.any { it === workout.routine }) saveRoutineLibrary() else true
+            }
+            val previous = SessionStore(this).loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }
+            val oldLayout = previous?.plannedSets?.map { Triple(it.setId.ifBlank { SetIdentity.migratedId(workout.sessionId, it.exerciseIndex, it.setIndex) }, it.exerciseId, it.exerciseIndex to it.setIndex) }
+            val newLayout = workout.routine.exercises.flatMapIndexed { ei, item -> item.sets.mapIndexed { si, set -> Triple(set.setId, item.exercise.id, ei to si) } }
+            if (oldLayout != null && oldLayout != newLayout) workout.routine.exercises.forEach { item -> item.sets.forEach { it.identityRequired = true } }
+            workout.performedRepsByExercise.clear()
+            workout.routine.exercises.groupBy { it.exercise.id }.forEach { (id, items) ->
+                workout.performedRepsByExercise[id] = items.sumOf { item -> item.sets.filter { it.completed }.sumOf { it.performedReps ?: 0 } }
+            }
+            val snapshot = workoutSnapshot(workout)
+            sessionStore.saveActive(snapshot)
+        }.getOrElse {
+            Log.e(EVENT_TAG, "workout snapshot creation or save failed", it)
+            false
         }
-        val previous = SessionStore(this).loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }
-        val oldLayout = previous?.plannedSets?.map { Triple(it.setId.ifBlank { SetIdentity.migratedId(workout.sessionId, it.exerciseIndex, it.setIndex) }, it.exerciseId, it.exerciseIndex to it.setIndex) }
-        val newLayout = workout.routine.exercises.flatMapIndexed { ei, item -> item.sets.mapIndexed { si, set -> Triple(set.setId, item.exercise.id, ei to si) } }
-        if (oldLayout != null && oldLayout != newLayout) workout.routine.exercises.forEach { item -> item.sets.forEach { it.identityRequired = true } }
-        workout.performedRepsByExercise.clear()
-        workout.routine.exercises.groupBy { it.exercise.id }.forEach { (id, items) ->
-            workout.performedRepsByExercise[id] = items.sumOf { item -> item.sets.filter { it.completed }.sumOf { it.performedReps ?: 0 } }
-        }
-        val snapshot = workoutSnapshot(workout)
-        val saved = runCatching { sessionStore.saveActive(snapshot) }.getOrDefault(false)
         Log.i(
             EVENT_TAG,
             KCoachEventTrace.format(
@@ -3148,8 +3289,10 @@ class MainActivity : ComponentActivity() {
                 detail = if (saved) "" else "snapshot_save_failed",
             ),
         )
+        val hasRollback = pendingWorkoutRollback?.first === workout
+        finishWorkoutEdit(workout, saved)
         if (!saved) {
-            sessionStore.loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }?.let {
+            if (!hasRollback) sessionStore.loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }?.let {
                 applySnapshotToWorkout(workout, it)
                 bumpWorkoutUi()
             }

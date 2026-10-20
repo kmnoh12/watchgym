@@ -3,8 +3,89 @@ package dev.kyungmin.kcoach.phone
 import android.util.Log
 import dev.kyungmin.kcoach.core.*
 
+/** Plan changes use immutable candidates; a rejected save cannot leak a partial UI edit. */
+sealed interface PhonePlanEdit {
+    data class AddSet(val exerciseIndex: Int) : PhonePlanEdit
+    data class RemoveSet(val exerciseIndex: Int, val setIndex: Int) : PhonePlanEdit
+    data class RestoreSet(val set: PlannedSetSnapshot) : PhonePlanEdit
+    data class SetRest(val exerciseIndex: Int, val setIndex: Int, val seconds: Int?) : PhonePlanEdit
+    data class ExerciseRest(val exerciseIndex: Int, val seconds: Int) : PhonePlanEdit
+}
+
+data class PhonePlanEditResult(val snapshot: WorkoutSnapshot, val syncFailure: Throwable?)
+
 /** Session transitions depend on persisted state, never on whether a screen is open. */
 class PhoneSessionController(private val store: SessionStore, private val send: (String, String) -> Unit) {
+    /** Uses this store's observed revision: do not reload it before saveActive. */
+    fun editPlan(buildSnapshot: () -> WorkoutSnapshot, edit: PhonePlanEdit): Result<PhonePlanEditResult> = runCatching {
+        val before = buildSnapshot()
+        val candidate = reducePlan(before, edit)
+        val saved = store.savePlan(candidate).getOrThrow()
+        // Persistence has succeeded. A transport error must not roll the UI back to an unsaved plan.
+        val syncFailure = runCatching { syncSnapshot(saved) }.exceptionOrNull()
+        if (syncFailure != null) Log.e("KCoachEvent", "saved plan watch sync failed", syncFailure)
+        PhonePlanEditResult(saved, syncFailure)
+    }.onFailure { Log.e("KCoachEvent", "plan edit rejected; previous state retained", it) }
+
+    private fun reducePlan(before: WorkoutSnapshot, edit: PhonePlanEdit): WorkoutSnapshot {
+        val sets = before.plannedSets.toMutableList()
+        fun exercise(index: Int) = sets.filter { it.exerciseIndex == index }.also { require(it.isNotEmpty()) }
+        var cursor = before.setIndex
+        when (edit) {
+            is PhonePlanEdit.AddSet -> {
+                val source = exercise(edit.exerciseIndex).last()
+                val added = source.copy(setIndex = source.setIndex + 1, completed = false,
+                    performedReps = null, repSource = null, setType = "NORMAL", rpe = null,
+                    setId = java.util.UUID.randomUUID().toString(), attemptId = java.util.UUID.randomUUID().toString(), identityRequired = true)
+                sets.add(sets.indexOf(source) + 1, added)
+            }
+            is PhonePlanEdit.RemoveSet -> {
+                val group = exercise(edit.exerciseIndex)
+                require(group.size > 1) { "Cannot remove the last set" }
+                val removed = group.single { it.setIndex == edit.setIndex }
+                sets.remove(removed)
+                if (before.exerciseIndex == edit.exerciseIndex) cursor = when {
+                    cursor > edit.setIndex -> cursor - 1
+                    cursor == edit.setIndex -> cursor.coerceAtMost(group.size - 2)
+                    else -> cursor
+                }
+            }
+            is PhonePlanEdit.RestoreSet -> {
+                val group = exercise(edit.set.exerciseIndex)
+                require(group.all { it.exerciseId == edit.set.exerciseId }) { "Exercise changed since removal" }
+                require(sets.none { it.setId == edit.set.setId }) { "Set already restored" }
+                val index = edit.set.setIndex.coerceIn(0, group.size)
+                val insertAt = if (index == group.size) sets.indexOf(group.last()) + 1 else sets.indexOf(group[index])
+                sets.add(insertAt, edit.set)
+                if (before.exerciseIndex == edit.set.exerciseIndex && cursor >= index) cursor++
+            }
+            is PhonePlanEdit.SetRest -> {
+                require(edit.seconds == null || edit.seconds >= 0)
+                val target = exercise(edit.exerciseIndex).single { it.setIndex == edit.setIndex }
+                sets[sets.indexOf(target)] = target.copy(restOverrideSeconds = edit.seconds,
+                    restSeconds = edit.seconds ?: target.exerciseRestSeconds)
+            }
+            is PhonePlanEdit.ExerciseRest -> {
+                require(edit.seconds >= 0)
+                exercise(edit.exerciseIndex).forEach { target ->
+                    sets[sets.indexOf(target)] = target.copy(exerciseRestSeconds = edit.seconds,
+                        restSeconds = target.restOverrideSeconds ?: edit.seconds)
+                }
+            }
+        }
+        val layoutChanged = edit is PhonePlanEdit.AddSet || edit is PhonePlanEdit.RemoveSet || edit is PhonePlanEdit.RestoreSet
+        val indices = mutableMapOf<Int, Int>()
+        val normalized = sets.map { set ->
+            val index = indices.getOrDefault(set.exerciseIndex, 0)
+            indices[set.exerciseIndex] = index + 1
+            set.copy(setIndex = index, identityRequired = set.identityRequired || layoutChanged)
+        }
+        return before.copy(plannedSets = normalized, setIndex = cursor,
+            performedReps = normalized.groupBy { it.exerciseId }.mapValues { (_, group) ->
+                group.filter { it.completed }.sumOf { it.performedReps ?: 0 }
+            })
+    }
+
     fun receiveManual(payload: String, nowMs: Long): Result<ManualSetApplication> = runCatching {
         val command = ManualSetCommand.fromEnvelope(WireCodec.decode(payload))
         val applied = store.applyManualSet(command, nowMs).getOrThrow()
@@ -51,10 +132,14 @@ class PhoneSessionController(private val store: SessionStore, private val send: 
 
     fun resync(): Result<Unit> = runCatching {
         val snapshot = store.loadActive().getOrThrow() ?: return@runCatching
+        syncSnapshot(snapshot)
+    }
+
+    private fun syncSnapshot(snapshot: WorkoutSnapshot) {
         val target = WorkoutSessionReducer.nextPendingSet(snapshot)
         if (target == null && snapshot.phase == WorkoutPhase.WORKING) {
             send(WearSync.PATH_COMMAND, WearSync.command("COMPLETE", snapshot.sessionId, "", 0, 0))
-            return@runCatching
+            return
         }
         val restSeconds = snapshot.plannedSets.firstOrNull {
             SetIdentity.completionKey(snapshot.sessionId, it) == snapshot.lastCompletedSetKey

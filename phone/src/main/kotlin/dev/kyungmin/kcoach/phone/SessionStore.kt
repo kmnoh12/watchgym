@@ -23,6 +23,14 @@ class SessionStore(private val context: Context) {
         commit(snapshot)
     }
 
+    /** Return exactly the committed revision, including store-owned rest version fields. */
+    fun savePlan(snapshot: WorkoutSnapshot): Result<WorkoutSnapshot> = synchronized(lock) {
+        runCatching {
+            check(saveActive(snapshot)) { "Plan save rejected (revision conflict or session unavailable)" }
+            requireNotNull(read())
+        }
+    }
+
     fun loadActive(): Result<WorkoutSnapshot?> = synchronized(lock) { runCatching { read() } }
 
     /** Preview is a separate durable offer. It is never an active session or an elapsed-time origin. */
