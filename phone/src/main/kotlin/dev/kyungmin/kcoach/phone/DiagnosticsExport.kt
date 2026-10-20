@@ -19,6 +19,9 @@ internal object DiagnosticsExport {
             .put("androidVersion", Build.VERSION.RELEASE).put("androidSdk", Build.VERSION.SDK_INT)
             .put("reports", JSONArray(reports.keys.sorted()))
             .put("hasExceptionReport", "last-exception.json" in reports)
+            .put("hasExceptionHistory", "exception-history.json" in reports)
+            .put("hasWatchExceptionHistory", "watch-exception-history.json" in reports)
+            .put("diagnosticsIncomplete", "diagnostics-status.json" in reports || "watch-diagnostics-status.json" in reports)
             .put("note", "Export version is not necessarily the version that crashed; older reports may lack app version.")
         ZipOutputStream(output).use { zip ->
             fun entry(name: String, text: String) {

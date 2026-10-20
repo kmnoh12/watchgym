@@ -9,7 +9,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = KCoachApplication::class)
+@Config(sdk = [34], application = DiagnosticsTestApplication::class)
 class WatchExitDiagnosticsTest {
     @Test fun exceptionHandlerDelegatesWithoutSavingThrowableMessages() {
         val app = RuntimeEnvironment.getApplication()

@@ -16,11 +16,19 @@ internal object CrashReportRelay {
     private const val KEY_SENT = "sentHash"
     /** Wear Data Layer messages are capped near 100 KB; stay under it without chunking. */
     private const val MAX_PAYLOAD_BYTES = 90_000
-    private val reportNames = listOf("last-exception.json", "system-exits.json", "last-state.json")
+    private val reportNames = listOf("last-exception.json", "system-exits.json", "last-state.json",
+        "exception-history.json", "event-history.json", "runtime-events.json", "diagnostics-status.json")
 
     fun relay(context: Context) {
-        val reports = LocalExitDiagnostics.readReports().getOrNull().orEmpty()
-        val payload = buildPayload(reports) ?: return
+        LocalExitDiagnostics.refreshSystemHistory(context)
+        val reports = LocalExitDiagnostics.readReports().getOrElse {
+            LocalExitDiagnostics.event("relay-read-failed", detail = it.javaClass.simpleName)
+            return
+        }
+        val payload = buildPayload(reports) ?: run {
+            if ("last-exception.json" in reports) LocalExitDiagnostics.event("relay-payload-too-large")
+            return
+        }
         val hash = MessageDigest.getInstance("SHA-256").digest(payload.toByteArray())
             .joinToString("") { "%02x".format(it) }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -33,7 +41,7 @@ internal object CrashReportRelay {
                 ))
                 sent = true
             }
-        }
+        }.onFailure { LocalExitDiagnostics.event("relay-send-failed", detail = it.javaClass.simpleName) }
         // Only remember it once a phone actually accepted the message, so an offline crash retries next launch.
         if (sent) prefs.edit().putString(KEY_SENT, hash).apply()
     }
@@ -42,7 +50,7 @@ internal object CrashReportRelay {
     internal fun buildPayload(reports: Map<String, String>): String? {
         val crash = reports["last-exception.json"] ?: return null
         fun encode(selected: Map<String, String>): String = JSONObject()
-            .put("atMs", System.currentTimeMillis())
+            .put("atMs", runCatching { JSONObject(crash).optLong("atMs") }.getOrDefault(0L))
             .put("appVersion", BuildConfig.VERSION_NAME)
             .put("reports", JSONObject(selected))
             .toString()
@@ -51,9 +59,24 @@ internal object CrashReportRelay {
             put("last-exception.json", crash)
             reportNames.drop(1).forEach { name -> reports[name]?.let { put(name, it) } }
         }
-        val fullPayload = encode(full)
-        if (fullPayload.toByteArray().size <= MAX_PAYLOAD_BYTES) return fullPayload
-        val crashOnly = encode(mapOf("last-exception.json" to crash))
-        return crashOnly.takeIf { it.toByteArray().size <= MAX_PAYLOAD_BYTES }
+        // JSON escaping also consumes wire bytes. Trim oldest journal entries, preserving all report names.
+        val journals = listOf("runtime-events.json" to "events", "event-history.json" to "events",
+            "exception-history.json" to "exceptions")
+        var payload = encode(full)
+        for ((name, key) in journals) {
+            val journal = full[name]?.let { runCatching { JSONObject(it) }.getOrNull() } ?: continue
+            val rows = journal.optJSONArray(key) ?: continue
+            while (payload.toByteArray(Charsets.UTF_8).size > MAX_PAYLOAD_BYTES && rows.length() > 1) {
+                rows.remove(0)
+                full[name] = journal.put("relayTruncated", true).toString()
+                full["diagnostics-status.json"] = JSONObject().put("failure", "relay-history-truncated")
+                    .put("sourceStatus", reports["diagnostics-status.json"]).toString()
+                payload = encode(full)
+            }
+        }
+        if (payload.toByteArray(Charsets.UTF_8).size <= MAX_PAYLOAD_BYTES) return payload
+        val crashOnly = encode(mapOf("last-exception.json" to crash,
+            "diagnostics-status.json" to JSONObject().put("failure", "relay-payload-too-large").toString()))
+        return crashOnly.takeIf { it.toByteArray(Charsets.UTF_8).size <= MAX_PAYLOAD_BYTES }
     }
 }
