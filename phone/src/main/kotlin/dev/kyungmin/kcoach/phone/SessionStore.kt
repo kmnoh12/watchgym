@@ -102,13 +102,8 @@ class SessionStore(private val context: Context) {
                     if (restControl) {
                         requireNotNull(previous)
                         val seconds = requireNotNull(command.restSeconds)
-                        val sets = current.plannedSets.map {
-                            if (it.exerciseIndex == previous.exerciseIndex) it.copy(
-                                exerciseRestSeconds = seconds,
-                                restSeconds = if (it === previous || it.restOverrideSeconds == null) seconds else it.restSeconds,
-                                restOverrideSeconds = if (it === previous && it.restOverrideSeconds != null) seconds else it.restOverrideSeconds)
-                            else it
-                        }
+                        // Watch rest changes are one-off: only the timer deadline below changes, never the sets' rest values.
+                        val sets = current.plannedSets
                         val pause = command.action == WatchWorkoutAction.REST_PAUSE ||
                             command.action == WatchWorkoutAction.REST_ADJUST && command.pausedRestRemainingMs != null
                         val remaining = command.pausedRestRemainingMs?.coerceIn(0, 1_800_000L) ?: 0L
@@ -151,19 +146,16 @@ class SessionStore(private val context: Context) {
         }
     }
 
-    /** Phone rest edits use the committed deadline, never an Activity's cached deadline. */
-    fun adjustRestDuration(sessionId: String, exerciseIndex: Int, deltaSeconds: Int, nowMs: Long): Result<WorkoutSnapshot?> = synchronized(lock) {
+    /** One-off rest change: only the running timer moves; no set, exercise or routine rest value is touched. */
+    fun adjustRestDuration(sessionId: String, deltaSeconds: Int, nowMs: Long, toSeconds: Int? = null): Result<WorkoutSnapshot?> = synchronized(lock) {
         runCatching {
             val current = read()?.takeIf { it.sessionId == sessionId } ?: return@runCatching null
-            val sets = current.plannedSets.map { set ->
-                if (set.exerciseIndex != exerciseIndex) set else {
-                    val seconds = (set.exerciseRestSeconds.toLong() + deltaSeconds).coerceIn(0, 1800).toInt()
-                    set.copy(exerciseRestSeconds = seconds, restSeconds = if (set.restOverrideSeconds == null) seconds else set.restSeconds)
-                }
-            }
-            val next = current.copy(plannedSets = sets,
-                restEndAtMs = if (current.restEndAtMs > 0) (current.restEndAtMs + deltaSeconds.toLong() * 1000).coerceIn(nowMs, nowMs + 1_800_000L) else 0,
-                pausedRestRemainingMs = if (current.pausedRestRemainingMs > 0) (current.pausedRestRemainingMs + deltaSeconds.toLong() * 1000).coerceIn(0, 1_800_000L) else 0)
+            if (current.restEndAtMs <= 0 && current.pausedRestRemainingMs <= 0) return@runCatching current
+            val remainingMs = if (current.restEndAtMs > 0) (current.restEndAtMs - nowMs).coerceAtLeast(0) else current.pausedRestRemainingMs
+            val deltaMs = if (toSeconds != null) toSeconds.toLong() * 1000 - remainingMs else deltaSeconds.toLong() * 1000
+            val next = current.copy(
+                restEndAtMs = if (current.restEndAtMs > 0) (current.restEndAtMs + deltaMs).coerceIn(nowMs, nowMs + 1_800_000L) else 0,
+                pausedRestRemainingMs = if (current.pausedRestRemainingMs > 0) (current.pausedRestRemainingMs + deltaMs).coerceIn(1, 1_800_000L) else 0)
             check(commit(next)); read()
         }
     }

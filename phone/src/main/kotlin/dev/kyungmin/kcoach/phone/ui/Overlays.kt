@@ -486,8 +486,8 @@ fun StopWorkoutDialog(
 }
 
 @Composable
-fun InputDialog(title: String, hint: String, dismiss: () -> Unit, onSubmit: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
+fun InputDialog(title: String, hint: String, dismiss: () -> Unit, initial: String = "", onSubmit: (String) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Text(title, color = KColors.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)

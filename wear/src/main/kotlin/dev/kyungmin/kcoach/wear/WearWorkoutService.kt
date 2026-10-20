@@ -163,7 +163,6 @@ class WearWorkoutService : Service(), SensorEventListener {
     private var phoneCheckPending = false
     private var phoneCheckResting = false
     private var phoneCheckSuppressedUntilNs = 0L
-    private var phoneCheckPendingSinceNs = 0L
     /** How long the wrist has been held still so far (calibration countdown on the watch screen). */
     private var preparationHoldMs = 0L
     private val capturePrefs by lazy { getSharedPreferences(CAPTURE_PREFS, MODE_PRIVATE) }
@@ -687,7 +686,7 @@ class WearWorkoutService : Service(), SensorEventListener {
                 if (!adjusting && intent.getIntExtra("reps", -1) == -1 && intent.getDoubleExtra("weightKg", Double.NaN).isNaN()) return
                 val delta = intent.getIntExtra("deltaSeconds", 0)
                 val now = System.currentTimeMillis()
-                val seconds = (restSeconds.toLong() + delta).coerceIn(0L, 1800L).toInt()
+                val seconds = restSeconds // one-off change: the configured rest stays as is
                 val remaining = (pausedRestRemainingMs + delta.toLong() * 1000L).coerceIn(0, 1_800_000L)
                 val end = if (paused) 0 else (restEndAtMs + delta.toLong() * 1000L).coerceIn(now, now + 1_800_000L)
                 val request = dev.kyungmin.kcoach.core.WatchWorkoutControl(
@@ -706,7 +705,7 @@ class WearWorkoutService : Service(), SensorEventListener {
                     editStatus = "BUSY"; broadcastState(force = true); return
                 }
                 editStatus = ""
-                if (adjusting) { mySeq = request.seq; restSeconds = seconds; restEndAtMs = end; if (paused) pausedRestRemainingMs = remaining }
+                if (adjusting) { mySeq = request.seq; restEndAtMs = end; if (paused) pausedRestRemainingMs = remaining }
                 if (editingCurrent) weightKg = request.weightKg
                 check(checkpoint())
                 replayWorkoutControls()
@@ -1574,15 +1573,7 @@ class WearWorkoutService : Service(), SensorEventListener {
                         sensorAccuracy = event.accuracy,
                     )
                     if (!measurementReady) {
-                        if (phoneCheckPending && phoneCheckPendingSinceNs > 0L &&
-                            sensorSample.timestampNs - phoneCheckPendingSinceNs >= 15_000_000_000L) {
-                            // No answer, no movement and still phone-viewing: leave it as rest, not a permanent prompt.
-                            resolvePhoneCheck(start = false)
-                        }
-                        if ((phoneCheckPending || phoneCheckResting) &&
-                            (!PhoneViewingStore(this).isViewing(sensorSample.timestampNs) || phoneCheckMotion(sensorSample))) {
-                            clearPhoneCheck()
-                        }
+                        refreshPhoneCheck(sensorSample)
                         val gate = startPoseGate?.observe(sensorSample, lastAccelerometerNs, lastAccelerometerAccuracy)
                         measurementArmed = gate?.armed == true
                         preparationHoldMs = gate?.stableDurationMs ?: 0L
@@ -1763,7 +1754,6 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (phoneCheckPending) return
         phoneCheckPending = true
         phoneCheckResting = false
-        phoneCheckPendingSinceNs = android.os.SystemClock.elapsedRealtimeNanos()
         measurementReady = false
         measurementArmed = true
         startPoseGate?.reset()
@@ -1772,11 +1762,25 @@ class WearWorkoutService : Service(), SensorEventListener {
         broadcastState(force = true)
     }
 
+    /**
+     * Raising the wrist is how the question gets read, so movement must not dismiss it.
+     * Only an answer or the phone going down ends the open question,
+     * and counting cannot begin while it is open.
+     */
+    private fun refreshPhoneCheck(sample: SensorSample) {
+        if (!phoneCheckPending && !phoneCheckResting) return
+        if (!PhoneViewingStore(this).isViewing(sample.timestampNs)) {
+            clearPhoneCheck()
+            return
+        }
+        // After "still resting" the user resumes by moving; the open question waits for its answer.
+        if (phoneCheckResting && phoneCheckMotion(sample)) clearPhoneCheck()
+    }
+
     private fun clearPhoneCheck() {
         if (!phoneCheckPending && !phoneCheckResting) return
         phoneCheckPending = false
         phoneCheckResting = false
-        phoneCheckPendingSinceNs = 0L
         phoneCheckSuppressedUntilNs = android.os.SystemClock.elapsedRealtimeNanos() + 30_000_000_000L
         startPoseGate?.reset()
         preparationHoldMs = 0L
@@ -1788,7 +1792,6 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (!phoneCheckPending && !phoneCheckResting) return
         phoneCheckPending = false
         phoneCheckResting = !start
-        phoneCheckPendingSinceNs = 0L
         phoneCheckSuppressedUntilNs = android.os.SystemClock.elapsedRealtimeNanos() + 30_000_000_000L
         startPoseGate?.reset()
         preparationHoldMs = 0L

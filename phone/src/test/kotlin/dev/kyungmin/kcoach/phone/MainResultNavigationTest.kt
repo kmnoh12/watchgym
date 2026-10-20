@@ -113,4 +113,20 @@ class MainResultNavigationTest {
             assertEquals("other-finished-session", field(activity, "visibleWorkoutResultSessionId"))
         } finally { controller.pause().stop().destroy() }
     }
+
+    @Test fun aRecordRowLoadsTheFinishedResultItBelongsTo() {
+        saveFinishedResult()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
+        val activity = controller.get()
+        try {
+            val load = MainActivity::class.java.getDeclaredMethod("loadRecordResult", WorkoutRecord::class.java)
+                .apply { isAccessible = true }
+            fun sessionOf(result: Any?): String? = result?.javaClass
+                ?.getDeclaredField("sessionId")?.apply { isAccessible = true }?.get(result) as String?
+            val record = WorkoutRecord("1970-01-01", "팔 루틴", 30, 1, 80, session)
+            assertEquals(session, sessionOf(load.invoke(activity, record)))
+            // Logs written before sessions were stored still resolve through the day and title.
+            assertEquals(session, sessionOf(load.invoke(activity, record.copy(sessionId = null))))
+        } finally { controller.pause().stop().destroy() }
+    }
 }

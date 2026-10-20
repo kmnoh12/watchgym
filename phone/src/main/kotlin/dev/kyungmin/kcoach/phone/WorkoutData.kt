@@ -74,7 +74,7 @@ data class RoutineExercise(
 
 data class WorkoutRoutine(
     val id: String,
-    val name: String,
+    var name: String,
     val muscles: String,
     var lastPerformed: String,
     val exercises: MutableList<RoutineExercise>,
@@ -87,6 +87,8 @@ data class WorkoutRecord(
     val minutes: Int,
     val sets: Int,
     val volumeKg: Int,
+    /** The finished session behind this row; null on logs written before sessions were stored. */
+    val sessionId: String? = null,
 )
 
 object WorkoutData {

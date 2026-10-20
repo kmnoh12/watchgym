@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -195,6 +197,7 @@ class HomeActions(
     val freeWorkout: () -> Unit,
     val add: () -> Unit,
     val openRunning: () -> Unit,
+    val openRunningList: () -> Unit,
     val togglePause: () -> Unit,
     val stop: () -> Unit,
 )
@@ -403,8 +406,19 @@ private fun RunningBar(running: RunningUi, actions: HomeActions) {
             delay(1_000)
         }
     }
-    Column {
+    Column(Modifier.pointerInput(Unit) {
+        // Pulled up like a drawer: switch to the running routine's exercise list.
+        var pulled = 0f
+        detectVerticalDragGestures(
+            onDragStart = { pulled = 0f },
+            onVerticalDrag = { _, amount -> pulled += amount },
+            onDragEnd = { if (pulled < -48f) actions.openRunningList() },
+        )
+    }) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(KColors.Accent))
+        Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(34.dp).height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).background(KColors.Faint))
+        }
         Row(
             Modifier
                 .fillMaxWidth()

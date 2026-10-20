@@ -22,7 +22,7 @@ import kotlin.math.sin
 enum class KIcon {
     Home, Records, Stats, Calibrate, Menu, Back, Forward, Down, Plus, Minus, Check, Close,
     Play, Pause, Stop, Info, Dots, DotsVertical, Clock, Search, Sliders, Heart, Flag, Swap,
-    Reload, Trash, Link, Skip, Watch, Settings,
+    Reload, Trash, Link, Skip, Watch, Settings, Edit,
 }
 
 @Composable
@@ -165,6 +165,10 @@ private fun DrawScope.drawKIcon(icon: KIcon, tint: Color, filled: Boolean) {
             val end = p(12f + 7f * cos(Math.toRadians(-50.0)).toFloat(), 12f + 7f * sin(Math.toRadians(-50.0)).toFloat())
             drawLine(tint, end, Offset(end.x + 1f * s, end.y - 4.2f * s), strokeWidth = stroke.width, cap = StrokeCap.Round)
             drawLine(tint, end, Offset(end.x - 3.8f * s, end.y - 0.8f * s), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        }
+        KIcon.Edit -> {
+            poly(4.5f to 19.5f, 5.5f to 15f, 16f to 4.5f, 19.5f to 8f, 9f to 18.5f, close = true)
+            line(13.5f, 7f, 17f, 10.5f)
         }
         KIcon.Trash -> {
             line(5f, 7f, 19f, 7f)

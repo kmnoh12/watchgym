@@ -40,6 +40,8 @@ class PhoneWorkoutService : Service() {
     private var idleSinceMs = -1L
     private var taskRemoved = false
     private var foregroundReady = false
+    // Newest start request this instance has seen; idle stops are only valid against it.
+    private var lastStartId = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -69,6 +71,7 @@ class PhoneWorkoutService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // A foreground request can reach this same instance after stopForeground/stopSelf
         // but before onDestroy. onCreate alone cannot acknowledge that new request.
+        lastStartId = startId
         if (!promoteToForeground()) {
             stopSelf(startId)
             return START_NOT_STICKY
@@ -175,11 +178,17 @@ class PhoneWorkoutService : Service() {
         val delivering = PhoneCommandOutbox(this).pendingForDelivery() != null || wearBridge.hasPendingDelivery() ||
             PatternTransferOutbox(this).pending().getOrElse { emptyList() }.isNotEmpty()
         if (delivering && nowMs - idleSinceMs < IDLE_DELIVERY_GRACE_MS) return false
+        // A plain stopSelf() would also drop a startForegroundService request that is already queued for this
+        // instance, which then never calls startForeground and crashes the app. Stop only if no newer start exists.
+        val stopped = if (lastStartId > 0) stopSelfResult(lastStartId) else { stopSelf(); true }
+        if (!stopped) {
+            idleSinceMs = -1L
+            return false
+        }
         heartbeatTicker?.let(handler::removeCallbacks)
         restTicker?.let(handler::removeCallbacks)
         stopForeground(STOP_FOREGROUND_REMOVE)
         foregroundReady = false
-        stopSelf()
         return true
     }
 

@@ -1,6 +1,9 @@
 package dev.kyungmin.kcoach.phone.ui
 
+import android.graphics.Bitmap
 import android.view.View
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -25,28 +28,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import dev.kyungmin.kcoach.phone.ResultImageExport
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
-private fun DetailHeader(title: String, back: () -> Unit) {
+private fun DetailHeader(title: String, back: () -> Unit, menu: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(54.dp, 58.dp).pressable(back), contentAlignment = Alignment.Center) {
             KIcon(KIcon.Back, KColors.White, size = 28.dp)
         }
         Text(title, color = KColors.White, fontSize = 25.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
         Box(Modifier.size(54.dp, 58.dp), contentAlignment = Alignment.Center) {
-            KIcon(KIcon.Dots, KColors.Muted, size = 24.dp)
+            if (menu != null) menu() else KIcon(KIcon.Dots, KColors.Muted, size = 24.dp)
         }
     }
 }
@@ -191,42 +209,129 @@ class ResultUi(
 
 @Composable
 fun WorkoutResultScreen(result: ResultUi, back: () -> Unit, toRecords: () -> Unit, summary: (@Composable () -> Unit)? = null) {
-    Column(Modifier.fillMaxSize().background(KColors.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp)) {
-        DetailHeader("운동 완료 결과", back)
-        Spacer(Modifier.height(24.dp))
-        Text(result.title, color = KColors.White, fontSize = 32.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(8.dp))
-        Text(result.subtitle, color = KColors.Muted, fontSize = 14.sp)
-        Spacer(Modifier.height(18.dp))
-        summary?.invoke()
-        if (result.records.isNotEmpty()) {
-            Spacer(Modifier.height(28.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text("${result.records.size}", color = KColors.Accent, fontSize = 56.sp, fontWeight = FontWeight.Medium, letterSpacing = (-1).sp)
-                Spacer(Modifier.width(10.dp))
-                Text("개 갱신", color = KColors.White, fontSize = 18.sp, modifier = Modifier.padding(bottom = 10.dp))
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The content column is taller than the viewport, so recording it here exports the whole page.
+    val capture = rememberGraphicsLayer()
+    var exporting by remember { mutableStateOf(false) }
+
+    fun export(share: Boolean) {
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            val bitmap = runCatching {
+                val image = capture.toImageBitmap()
+                check(image.width > 0 && image.height > 0)
+                Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888).also { out ->
+                    val canvas = android.graphics.Canvas(out)
+                    canvas.drawColor(KColors.Bg.toArgb())
+                    canvas.drawBitmap(image.asAndroidBitmap(), 0f, 0f, null)
+                }
+            }.getOrNull()
+            if (bitmap == null) {
+                exporting = false
+                Toast.makeText(context, "결과 이미지를 만들지 못했어요", Toast.LENGTH_SHORT).show()
+                return@launch
             }
-            Spacer(Modifier.height(6.dp))
-            Text("오늘 깬 기록", color = KColors.Soft, fontSize = 15.sp)
-            Spacer(Modifier.height(10.dp))
-            RecordList(result.records)
+            val ok = withContext(Dispatchers.IO) {
+                if (share) ResultImageExport.share(context, bitmap, result.title)
+                else ResultImageExport.save(context, bitmap, result.title)
+            }
+            exporting = false
+            val message = when {
+                !ok -> "이미지를 저장하지 못했어요"
+                share -> "공유 화면을 열었어요"
+                else -> "사진에 저장했어요"
+            }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
-        Spacer(Modifier.height(28.dp))
-        Text("세트별 센서 추정", color = KColors.Soft, fontSize = 15.sp)
-        Spacer(Modifier.height(10.dp))
-        result.sections.forEach {
-            if (it.repSeconds.isNotEmpty()) {
-                Text(it.title, color = KColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
-                RepTempoBars(it.repSeconds)
-                Spacer(Modifier.height(14.dp))
-                SectionCard("센서 추정", it.values)
-            } else SectionCard(it.title, it.values)
-            Spacer(Modifier.height(24.dp))
+    }
+
+    Box(Modifier.fillMaxSize().background(KColors.Bg)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .drawWithContent {
+                        capture.record { this@drawWithContent.drawContent() }
+                        drawContent()
+                    }
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+            ) {
+                DetailHeader("운동 완료 결과", back, menu = {
+                    ResultMenu(enabled = !exporting, onShare = { export(true) }, onSave = { export(false) })
+                })
+                Spacer(Modifier.height(24.dp))
+                Text(result.title, color = KColors.White, fontSize = 32.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(8.dp))
+                Text(result.subtitle, color = KColors.Muted, fontSize = 14.sp)
+                Spacer(Modifier.height(18.dp))
+                summary?.invoke()
+                if (result.records.isNotEmpty()) {
+                    Spacer(Modifier.height(28.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text("${result.records.size}", color = KColors.Accent, fontSize = 56.sp, fontWeight = FontWeight.Medium, letterSpacing = (-1).sp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("개 갱신", color = KColors.White, fontSize = 18.sp, modifier = Modifier.padding(bottom = 10.dp))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("오늘 깬 기록", color = KColors.Soft, fontSize = 15.sp)
+                    Spacer(Modifier.height(10.dp))
+                    RecordList(result.records)
+                }
+                Spacer(Modifier.height(28.dp))
+                Text("세트별 센서 추정", color = KColors.Soft, fontSize = 15.sp)
+                Spacer(Modifier.height(10.dp))
+                result.sections.forEach {
+                    if (it.repSeconds.isNotEmpty()) {
+                        Text(it.title, color = KColors.Muted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
+                        RepTempoBars(it.repSeconds)
+                        Spacer(Modifier.height(14.dp))
+                        SectionCard("센서 추정", it.values)
+                    } else SectionCard(it.title, it.values)
+                    Spacer(Modifier.height(24.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(result.footnote, color = KColors.Muted, fontSize = 13.sp)
+                Spacer(Modifier.height(18.dp))
+                WideButton("운동 기록으로 돌아가기", KColors.SurfaceRaised, KColors.White, 58, onClick = toRecords)
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(result.footnote, color = KColors.Muted, fontSize = 13.sp)
-        Spacer(Modifier.height(18.dp))
-        WideButton("운동 기록으로 돌아가기", KColors.SurfaceRaised, KColors.White, 58, onClick = toRecords)
+    }
+}
+
+@Composable
+private fun ResultMenu(enabled: Boolean, onShare: () -> Unit, onSave: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().testTag("result-menu").clickable(enabled = enabled) { open = true },
+            contentAlignment = Alignment.Center,
+        ) { KIcon(KIcon.Dots, if (enabled) KColors.Muted else KColors.Faint, size = 24.dp) }
+        if (open) {
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, with(density) { 58.dp.roundToPx() }),
+                onDismissRequest = { open = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Column(Modifier.width(188.dp).clip(KShape.Control).background(KColors.SurfaceRaised).padding(vertical = 6.dp)) {
+                    ResultMenuItem("이미지로 공유") { open = false; onShare() }
+                    ResultMenuItem("이미지로 저장") { open = false; onSave() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultMenuItem(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 13.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(label, color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
 

@@ -50,7 +50,7 @@ class NavMotionFrames {
         )
         compose.setContent {
             Box(Modifier.fillMaxSize().background(KColors.Bg)) {
-                HomeScreen(ui, null, HomeActions({}, {}, {}, {}, {}, {}, {}))
+                HomeScreen(ui, null, HomeActions({}, {}, {}, {}, {}, {}, {}, {}))
                 Box(Modifier.align(Alignment.BottomCenter)) { FloatingTabBar(selected.intValue, true) { selected.intValue = it } }
             }
         }

@@ -52,7 +52,7 @@ class WatchWorkoutUiTest {
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
         assertNotNull(dialog)
-        assertEquals("아직 휴식 중인가요?", shadowOf(dialog!!).title)
+        assertEquals("폰 보고 있나요?", shadowOf(dialog!!).title)
         controller.pause().stop().destroy()
     }
 

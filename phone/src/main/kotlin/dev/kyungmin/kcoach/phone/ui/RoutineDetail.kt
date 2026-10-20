@@ -26,6 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +87,11 @@ fun RoutineDetailScreen(
     actions: RoutineDetailActions,
     preparationContent: (@Composable () -> Unit)? = null,
     addFilled: Boolean = false,
+    /** Pencil next to the title; null hides it. */
+    onRename: (() -> Unit)? = null,
+    /** Running workout clock shown at the right of the title row; null when no workout runs. */
+    elapsedSeconds: (() -> Long)? = null,
+    paused: Boolean = false,
 ) {
     val list = remember { mutableStateListOf<RoutineRowUi>().apply { addAll(rows) } }
     var draggedKey by remember { mutableStateOf<Int?>(null) }
@@ -104,9 +111,28 @@ fun RoutineDetailScreen(
                         Box(Modifier.size(54.dp, 58.dp).pressable(actions.back), contentAlignment = Alignment.Center) {
                             KIcon(KIcon.Back, KColors.White, size = 28.dp)
                         }
-                        Text(title, color = KColors.White, fontSize = 28.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Box(Modifier.size(54.dp, 58.dp), contentAlignment = Alignment.Center) {
-                            KIcon(KIcon.Dots, KColors.Muted, size = 24.dp)
+                        Text(title, color = KColors.White, fontSize = 28.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        if (onRename != null) {
+                            Box(Modifier.size(44.dp, 58.dp).pressable(onRename), contentAlignment = Alignment.Center) {
+                                KIcon(KIcon.Edit, KColors.Muted, size = 20.dp)
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        if (elapsedSeconds != null) {
+                            val elapsed by produceState(elapsedSeconds(), elapsedSeconds, paused) {
+                                while (true) {
+                                    value = elapsedSeconds()
+                                    if (paused) break
+                                    delay(1_000)
+                                }
+                            }
+                            Text(
+                                "%02d:%02d".format(elapsed / 60, elapsed % 60),
+                                color = if (paused) KColors.Muted else KColors.Accent,
+                                fontSize = 20.sp, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(end = 4.dp),
+                            )
                         }
                     }
                     Spacer(Modifier.height(18.dp))

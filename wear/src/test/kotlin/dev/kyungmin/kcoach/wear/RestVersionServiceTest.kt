@@ -49,6 +49,24 @@ class RestVersionServiceTest {
         } finally { controller.destroy() }
     }
 
+    @Test fun aTwoHundredTapRestAdjustBurstKeepsOneLatestDeadlineAndDoesNotThrow() {
+        val controller = Robolectric.buildService(WearWorkoutService::class.java).create()
+        try {
+            val service = controller.get(); val end = start(service)
+            var expected = end
+            repeat(200) { i ->
+                val delta = if (i % 2 == 0) 10 else -10
+                service.onStartCommand(command("REST_ADJUST").putExtra("deltaSeconds", delta), 0, 10 + i)
+                expected += delta * 1_000L
+            }
+            val pending = WatchWorkoutOutbox(RuntimeEnvironment.getApplication()).pending()
+            assertEquals("A burst must coalesce into the newest command", 1, pending.size)
+            assertEquals(200L, pending.single().seq)
+            assertEquals(expected, pending.single().restEndAtMs)
+            assertEquals(expected, state().getLongExtra("restEndAtMs", 0))
+        } finally { controller.destroy() }
+    }
+
     @Test fun localPauseFreezesImmediatelyAndLatestResumeSurvivesOldPhoneStatesAndRecreation() {
         var controller = Robolectric.buildService(WearWorkoutService::class.java).create()
         try {

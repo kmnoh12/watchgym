@@ -31,6 +31,16 @@ class IdleServiceTest {
         controller.destroy()
     }
 
+    @Test fun idleStopTargetsTheNewestStartIdSoAQueuedForegroundStartIsNotDropped() {
+        val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        val service = controller.get()
+        service.onStartCommand(null, 0, 3)
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        assertTrue(shadowOf(service).isStoppedBySelf)
+        assertEquals("Idle stop must carry the latest startId; a bare stopSelf() drops queued starts", 3, shadowOf(service).stopSelfResultId)
+        controller.destroy()
+    }
+
     @Test fun idlePhoneServiceStopsItsForegroundLoop() {
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
         val service = controller.get()

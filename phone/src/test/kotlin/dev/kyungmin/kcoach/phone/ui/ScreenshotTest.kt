@@ -59,7 +59,7 @@ class ScreenshotTest {
             ),
             weekCount = 2, rows = rows, longestRest = rows.lastOrNull(),
         )
-        val actions = HomeActions({}, {}, {}, {}, {}, {}, {})
+        val actions = HomeActions({}, {}, {}, {}, {}, {}, {}, {})
         shot("home") { HomeScreen(ui, null, actions) }
     }
 
@@ -89,7 +89,7 @@ class ScreenshotTest {
             WorkoutRecord("${month}-05", "등·이두", 68, 22, 7840),
             WorkoutRecord("${month}-09", "가슴·삼두", 81, 26, 10450),
         )
-        shot("records") { RecordsScreen(records, month, "가슴·삼두", RecordsActions({}, {})) }
+        shot("records") { RecordsScreen(records, month, "가슴·삼두", RecordsActions({}, {}, {})) }
     }
 
     @Test

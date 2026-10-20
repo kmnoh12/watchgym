@@ -90,6 +90,8 @@ class MainActivity : Activity() {
     private var lastWorkingWeight: Double? = null
     private var wasResting = false
     private var phoneCheckDialog: AlertDialog? = null
+    /** The question must only exist while the round display is awake; a dialog left up on a stopped activity is stale. */
+    private var resumed = false
     /** 0 while the rest runs, 1 when it is paused; animated over 340 ms when the pause state changes (design 4-1). */
     private var restMorphTarget = 0f
     private var restMorphAnimator: android.animation.ValueAnimator? = null
@@ -243,6 +245,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
+        // The screen may have been off while the service raised the phone-viewing question.
+        // Ask for the live phase so the watch shows the question instead of a stale page.
+        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
         updateScreenPolicy()
         otaCoordinator.attach(this)
         handler.removeCallbacks(clockTicker)
@@ -251,6 +257,9 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        resumed = false
+        phoneCheckDialog?.takeIf { it.isShowing }?.dismiss()
+        phoneCheckDialog = null
         otaCoordinator.detach(this)
         handler.removeCallbacks(clockTicker)
         super.onPause()
@@ -791,20 +800,27 @@ class MainActivity : Activity() {
 
     /** The old number slides up and out while the new one rises in from below, quickly and without any bounce. */
     private fun updatePhoneCheckDialog() {
-        val wanted = running && runtimePhase == "PHONE_CHECK"
+        val wanted = resumed && running && runtimePhase == "PHONE_CHECK"
         if (!wanted) {
             phoneCheckDialog?.takeIf { it.isShowing }?.dismiss()
             phoneCheckDialog = null
             return
         }
         if (phoneCheckDialog?.isShowing == true) return
-        phoneCheckDialog = AlertDialog.Builder(this)
-            .setTitle("아직 휴식 중인가요?")
-            .setMessage("폰을 보고 있으면 시작하지 않아요.")
-            .setPositiveButton("운동 시작") { _, _ -> sendPhoneCheck("PHONE_CHECK_START") }
-            .setNegativeButton("휴식") { _, _ -> sendPhoneCheck("PHONE_CHECK_REST") }
-            .setOnCancelListener { sendPhoneCheck("PHONE_CHECK_REST") }
-            .show()
+        if (isFinishing || isDestroyed) return
+        // The state broadcast can arrive while the round display is asleep or tearing down.
+        // Adding a window then throws BadTokenException on the main thread and kills the whole
+        // process, taking the live rest timer with it; the question is simply retried on resume.
+        phoneCheckDialog = runCatching {
+            AlertDialog.Builder(this)
+                .setTitle("폰 보고 있나요?")
+                .setMessage("폰을 보는 동안에는 이 세트를 시작하지 않아요.")
+                .setCancelable(false)
+                .setPositiveButton("운동 시작") { _, _ -> sendPhoneCheck("PHONE_CHECK_START") }
+                .setNegativeButton("휴식") { _, _ -> sendPhoneCheck("PHONE_CHECK_REST") }
+                .show()
+        }.getOrNull()
+        if (phoneCheckDialog?.isShowing != true) phoneCheckDialog = null
     }
 
     private fun sendPhoneCheck(command: String) {

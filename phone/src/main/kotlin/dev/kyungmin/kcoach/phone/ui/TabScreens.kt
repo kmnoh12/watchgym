@@ -118,7 +118,11 @@ fun MetricGrid(metrics: List<Pair<String, String>>) {
     }
 }
 
-class RecordsActions(val openResult: () -> Unit, val monthChanged: (YearMonth) -> Unit)
+class RecordsActions(
+    val openResult: () -> Unit,
+    val openRecord: (WorkoutRecord) -> Unit,
+    val monthChanged: (YearMonth) -> Unit,
+)
 
 @Composable
 fun RecordsScreen(
@@ -189,7 +193,7 @@ fun RecordsScreen(
         if (records.isEmpty()) {
             Text("아직 기록이 없어요", color = KColors.Muted, fontSize = 14.sp, modifier = Modifier.padding(vertical = 18.dp))
         }
-        records.take(4).forEach { record -> RecordCard(record) }
+        records.take(4).forEach { record -> RecordCard(record) { actions.openRecord(record) } }
     }
 }
 
@@ -235,9 +239,12 @@ private fun CalendarGrid(month: YearMonth, records: List<WorkoutRecord>) {
 }
 
 @Composable
-private fun RecordCard(record: WorkoutRecord) {
+private fun RecordCard(record: WorkoutRecord, onClick: () -> Unit) {
     Column {
-        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().pressable(onClick).padding(start = 2.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Column(Modifier.weight(1f)) {
                 Text(record.title, color = KColors.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
                 Text(record.date.replace("-", "."), color = KColors.Muted, fontSize = 12.sp)
@@ -246,6 +253,7 @@ private fun RecordCard(record: WorkoutRecord) {
                 Text("${record.minutes}분 · ${record.sets}세트", color = KColors.Soft, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("%,dkg".format(record.volumeKg), color = KColors.Muted, fontSize = 12.sp)
             }
+            KIcon(KIcon.Forward, KColors.Muted, Modifier.padding(start = 8.dp), 18.dp)
         }
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(KColors.Hairline))
     }

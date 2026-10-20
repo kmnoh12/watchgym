@@ -147,8 +147,10 @@ import dev.kyungmin.kcoach.core.PersonalCalibrationBuilder
 import dev.kyungmin.kcoach.core.PersonalCalibrationProfileCodec
 import dev.kyungmin.kcoach.core.TrackingMode
 import com.google.android.gms.wearable.Wearable
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -676,7 +678,7 @@ class MainActivity : ComponentActivity() {
 
     private fun workoutRecords(): List<WorkoutRecord> =
         workoutLogStore.load().sortedByDescending { it.epochDay }.map {
-            WorkoutRecord(LocalDate.ofEpochDay(it.epochDay).toString(), it.title, it.minutes, it.sets, it.volumeKg)
+            WorkoutRecord(LocalDate.ofEpochDay(it.epochDay).toString(), it.title, it.minutes, it.sets, it.volumeKg, it.sessionId)
         }
 
     private fun weekRecords(today: LocalDate): List<WorkoutRecord> {
@@ -729,6 +731,7 @@ class MainActivity : ComponentActivity() {
             freeWorkout = ::showFreeWorkout,
             add = ::showAddSheet,
             openRunning = { showActiveWorkout() },
+            openRunningList = { running?.let { showRoutine(it.routine, active = it, animateIn = true) } },
             togglePause = {
                 running?.let(::toggleWorkoutPause)
                 showHome()
@@ -748,6 +751,11 @@ class MainActivity : ComponentActivity() {
         onExit: (() -> Unit)? = null,
         animateIn: Boolean = false,
     ) {
+        if (active == null) {
+            // The running workout owns its own copy of the routine; always show that one so taps reach the live exercise.
+            activeWorkout?.takeIf { it.routine === routine || it.routine.id == routine.id }
+                ?.let { return showRoutine(it.routine, reorderMode, it, onExit, animateIn) }
+        }
         if (active == null && activeWorkout == null) {
             prefillProgression(routine)
         }
@@ -807,6 +815,9 @@ class MainActivity : ComponentActivity() {
                     showHandle = reorderMode,
                     actions = actions,
                     preparationContent = if (active == null) ({ RoutinePreparation(routine) }) else null,
+                    onRename = { showRenameRoutineDialog(routine, reload) },
+                    elapsedSeconds = active?.let { running -> { workoutElapsedSeconds(running) } },
+                    paused = active?.paused == true,
                 )
             }
         }
@@ -1006,6 +1017,7 @@ class MainActivity : ComponentActivity() {
         currentScreen = Screen.ROOT
         val actions = RecordsActions(
             openResult = { showWorkoutResult(lastWorkoutResult) },
+            openRecord = { record -> openRecordResult(record) },
             monthChanged = { recordMonth = it },
         )
         val title = lastWorkoutResult?.title
@@ -1026,6 +1038,29 @@ class MainActivity : ComponentActivity() {
         val saved = FinishedWorkoutStore(this).evidenceForSessions(setOf(sessionId)).singleOrNull() ?: return null
         return WorkoutResultUi(sessionId, saved.title, saved.minutes, saved.snapshot.plannedSets.count { it.completed },
             SetAnalysisStore(this).loadForSession(sessionId).toMutableMap())
+    }
+
+    private fun openRecordResult(record: WorkoutRecord) {
+        val result = runCatching { loadRecordResult(record) }.getOrNull()
+        if (result == null) {
+            Toast.makeText(this, "이 기록의 상세 결과를 찾지 못했어요", Toast.LENGTH_SHORT).show()
+            return
+        }
+        showWorkoutResult(result)
+    }
+
+    /** A record row opens the same result screen as the newest workout; pre-session logs fall back to that day's session. */
+    private fun loadRecordResult(record: WorkoutRecord): WorkoutResultUi? {
+        record.sessionId?.let { id -> loadFinishedWorkoutResult(id)?.let { return it } }
+        val day = runCatching { LocalDate.parse(record.date).toEpochDay() }.getOrNull() ?: return null
+        val candidates = FinishedWorkoutStore(this).allEvidence().filter {
+            Instant.ofEpochMilli(it.snapshot.startedAtMs).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay() == day
+        }
+        val evidence = candidates.firstOrNull { it.title == record.title }
+            ?: candidates.firstOrNull { it.minutes == record.minutes }
+            ?: candidates.singleOrNull()
+            ?: return null
+        return loadFinishedWorkoutResult(evidence.snapshot.sessionId)
     }
 
     private fun showRequestedWorkoutResult(request: Intent?): Boolean {
@@ -1375,20 +1410,13 @@ class MainActivity : ComponentActivity() {
             .onFailure { Log.w(EVENT_TAG, "watch routine offer not prepared", it) }
     }
 
-    private fun adjustRestDuration(
-        workout: ActiveWorkout,
-        routineExercise: RoutineExercise,
-        deltaSeconds: Int,
-    ) {
+    private fun adjustRestDuration(workout: ActiveWorkout, deltaSeconds: Int, toSeconds: Int? = null) {
+        // Rest changes during a rest are one-off; the exercise's saved rest time is edited only from its menu.
         if (activeWorkout === workout) {
-            val index = workout.routine.exercises.indexOf(routineExercise)
-            val snapshot = sessionStore.adjustRestDuration(workout.sessionId, index, deltaSeconds, System.currentTimeMillis())
+            val snapshot = sessionStore.adjustRestDuration(workout.sessionId, deltaSeconds, System.currentTimeMillis(), toSeconds)
                 .getOrNull() ?: return
             applySnapshotToWorkout(workout, snapshot)
             resyncActiveWorkoutToWatch(workout)
-        } else {
-            routineExercise.restSeconds = (routineExercise.restSeconds + deltaSeconds).coerceIn(0, 1800)
-            persistActiveWorkout(workout)
         }
         bumpWorkoutUi()
     }
@@ -1945,14 +1973,12 @@ class MainActivity : ComponentActivity() {
 
         override fun onAdjustRest(deltaSeconds: Int) {
             val workout = workout() ?: return
-            val routineExercise = exercise(workout.exerciseIndex) ?: return
-            adjustRestDuration(workout, routineExercise, deltaSeconds)
+            adjustRestDuration(workout, deltaSeconds)
         }
 
         override fun onRestPreset(seconds: Int) {
             val workout = workout() ?: return
-            val routineExercise = exercise(workout.exerciseIndex) ?: return
-            adjustRestDuration(workout, routineExercise, seconds - routineExercise.restSeconds)
+            adjustRestDuration(workout, 0, toSeconds = seconds)
         }
 
         override fun onSkipRest() {
@@ -2166,7 +2192,7 @@ class MainActivity : ComponentActivity() {
         if (index !in workout.routine.exercises.indices) return false
         if (activeWorkout === workout && (activeRestEndAtMs > 0L || pausedRestRemainingMs > 0L)) {
             workout.restingPageIndex = index
-            bumpWorkoutUi()
+            if (currentScreen == Screen.ACTIVE) bumpWorkoutUi() else showActiveWorkout(forceRebuild = true)
             return true
         }
         workout.restingPageIndex = null
@@ -2744,6 +2770,27 @@ class MainActivity : ComponentActivity() {
         Log.e(EVENT_TAG, "routine library save failed; previous file retained", it)
         Toast.makeText(this, "루틴·운동을 저장하지 못했어요. 이전 저장 데이터는 유지돼요.", Toast.LENGTH_LONG).show()
     }.isSuccess
+
+    private fun showRenameRoutineDialog(routine: WorkoutRoutine, onDone: () -> Unit) {
+        showPopup { dismiss ->
+            InputDialog("루틴 이름 수정", "루틴 이름", dismiss, initial = routine.name) { typed ->
+                val name = typed.trim()
+                if (name.isEmpty() || name == routine.name) return@InputDialog
+                // The running workout works on a copy of the saved routine; keep both names in step.
+                val saved = routines.filter { it.id == routine.id }
+                val previous = routine.name
+                routine.name = name
+                saved.forEach { it.name = name }
+                if (saved.isNotEmpty() && !saveRoutineLibrary()) {
+                    routine.name = previous
+                    saved.forEach { it.name = previous }
+                    return@InputDialog
+                }
+                activeWorkout?.takeIf { it.routine === routine }?.let(::persistActiveWorkout)
+                onDone()
+            }
+        }
+    }
 
     private fun showNewRoutineDialog() {
         showPopup { dismiss ->
