@@ -1711,7 +1711,9 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
         }
         val savedCapture = saveCapture()
-        check(captureSampleCount == 0 || savedCapture != null) { "Completion capture save failed" }
+        // A failed save must not throw out of the set-end timer (that kills the app mid-workout). The raw chunks and
+        // pendingCompletion stay on disk and retryPendingCaptures delivers them later.
+        if (captureSampleCount != 0 && savedCapture == null) Log.e(TAG, "completion capture save failed; raw chunks retained for retry session=$sessionId set=$setIndex")
         savedCapture?.let(::sendCaptureToPhone)
         if (wasCalibration) {
             Log.i(CALIBRATION_TAG, "stage=CALIBRATION_RESULT session=$sessionId exerciseId=$exerciseId reps=$reps")

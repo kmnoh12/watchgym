@@ -153,9 +153,13 @@ class SetIdentityTest {
     }
     @Test fun aCaptureFromAnotherAttemptCannotSubstituteForMissingChunks() {
         val s = service(); s.onStartCommand(command("START").putExtra("setId", "set").putExtra("attemptId", "old"), 0, 1)
-        append(s); call(s, "checkpoint"); call(s, "saveCapture")
+        append(s); call(s, "checkpoint")
         val runtime = RuntimeEnvironment.getApplication().getSharedPreferences("workout-runtime", android.content.Context.MODE_PRIVATE)
-        val saved = org.json.JSONObject(runtime.getString("state", null)!!).put("attemptId", "new")
+        // Finalization persists an empty chunk list and then deletes the chunks, so the crash window is the state saved
+        // before finalization: it still references the chunks, which are gone after saveCapture.
+        val beforeFinalize = runtime.getString("state", null)!!
+        call(s, "saveCapture")
+        val saved = org.json.JSONObject(beforeFinalize).put("attemptId", "new")
         runtime.edit().putString("state", saved.toString()).commit()
         val restored = service(); call(restored, "restoreRuntime")
         assertNotNull(get(restored, "captureRecoveryError"))
