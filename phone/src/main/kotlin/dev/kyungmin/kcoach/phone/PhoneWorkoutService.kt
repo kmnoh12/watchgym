@@ -73,7 +73,9 @@ class PhoneWorkoutService : Service() {
         // A foreground request can reach this same instance after stopForeground/stopSelf
         // but before onDestroy. onCreate alone cannot acknowledge that new request.
         lastStartId = startId
+        LocalExitDiagnostics.event("fgs-start", intent?.getStringExtra(EXTRA_ACTION) ?: intent?.getStringExtra(EXTRA_PATH).orEmpty(), startId)
         if (!promoteToForeground()) {
+            LocalExitDiagnostics.event("fgs-promote-refused", "", startId)
             notifyCommandRejected(this, "FOREGROUND_PROMOTION")
             stopForStart(startId)
             return START_NOT_STICKY
@@ -117,6 +119,7 @@ class PhoneWorkoutService : Service() {
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         // The persisted session and command outbox remain available for reconnection.
+        LocalExitDiagnostics.event("fgs-timeout", "type=$fgsType", startId)
         stopForStart(startId)
     }
 
@@ -188,7 +191,11 @@ class PhoneWorkoutService : Service() {
 
     private fun stopForStart(startId: Int): Boolean {
         // A stale timeout or queued newer start must keep both foreground status and tickers intact.
-        if (startId <= 0 || startId != lastStartId || !stopSelfResult(startId)) return false
+        if (startId <= 0 || startId != lastStartId || !stopSelfResult(startId)) {
+            LocalExitDiagnostics.event("fgs-stop-refused", "latest=$lastStartId", startId)
+            return false
+        }
+        LocalExitDiagnostics.event("fgs-stop", "", startId)
         heartbeatTicker?.let(handler::removeCallbacks)
         restTicker?.let(handler::removeCallbacks)
         stopForeground(STOP_FOREGROUND_REMOVE)
