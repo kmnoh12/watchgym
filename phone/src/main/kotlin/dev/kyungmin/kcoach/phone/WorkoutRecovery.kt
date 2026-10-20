@@ -32,3 +32,12 @@ internal fun restoreWorkoutRoutine(snapshot: WorkoutSnapshot, template: WorkoutR
         snapshot.routineName.ifBlank { template?.name ?: if (snapshot.routineId == "free") "자유운동" else "운동" },
         template?.muscles ?: "선택 운동", "오늘", exercises)
 }
+
+/** A saved cursor can be past the end after the last set or after an edit; keep it inside the rebuilt plan. */
+internal fun restoredCursor(snapshot: WorkoutSnapshot, routine: WorkoutRoutine): Pair<Int, Int> {
+    val exerciseIndex = if (routine.exercises.isEmpty()) 0
+        else snapshot.exerciseIndex.coerceIn(0, routine.exercises.lastIndex)
+    val setIndex = routine.exercises.getOrNull(exerciseIndex)?.sets?.lastIndex?.coerceAtLeast(0)
+        ?.let { snapshot.setIndex.coerceIn(0, it) } ?: 0
+    return exerciseIndex to setIndex
+}

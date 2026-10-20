@@ -81,7 +81,8 @@ class ForearmRotationRepDetector(
     private var firstLobeDirection = 0
     private var lastTimestampNs = 0L
     private var quietSinceNs = 0L
-    private var lastMotionNs = 0L
+    var lastMotionNs: Long = 0L
+        private set
 
     private var lowRateSamples = 0
     private var misalignedSamples = 0

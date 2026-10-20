@@ -107,14 +107,17 @@ class PhoneWearListenerService : WearableListenerService() {
     }
 
     override fun onMessageReceived(event: MessageEvent) {
-        if (dev.kyungmin.kcoach.updates.OtaDataLayer.receive(this, event.path, String(event.data), event.sourceNodeId)) return
-        handlePayload(event.path, String(event.data))
+        runCatching {
+            if (dev.kyungmin.kcoach.updates.OtaDataLayer.receive(this, event.path, String(event.data), event.sourceNodeId)) return
+            handlePayload(event.path, String(event.data))
+        }.onFailure { Log.e(TAG, "wear message rejected path=${event.path}; durable state retained", it) }
     }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
-        dev.kyungmin.kcoach.updates.OtaDataLayer.receive(this, dataEvents)
+        runCatching { dev.kyungmin.kcoach.updates.OtaDataLayer.receive(this, dataEvents) }
+            .onFailure { Log.w(TAG, "update data rejected; capture scan continues", it) }
         if (dataEvents.any { it.type == DataEvent.TYPE_CHANGED && it.dataItem.uri.path.orEmpty().startsWith(WearSync.PATH_CAPTURE_ASSET_V3) }) {
-            recoverCachedAssets()
+            runCatching { recoverCachedAssets() }.onFailure { Log.w(TAG, "cached capture scan deferred", it) }
         }
     }
 
@@ -586,9 +589,9 @@ class PhoneWearListenerService : WearableListenerService() {
                 sessionController.resync().onFailure { Log.e(EVENT_TAG, "watch resync failed", it) }
                 WatchWorkoutController(this) { outPath, value -> PhoneWorkoutService.send(this, outPath, value) }.sendOffer(System.currentTimeMillis())
                 PhoneWorkoutService.retryPending(this)
-                syncPersonalProfiles()
+                runCatching { syncPersonalProfiles() }.onFailure { Log.w(EVENT_TAG, "personal profile transfer retained", it) }
             }
-            WearSync.PATH_COMMAND_ACK -> {
+            WearSync.PATH_COMMAND_ACK -> runCatching {
                 when (commandOutbox.receiveAck(payload)) {
                     CommandAckResult.RESYNC -> sessionController.resync().onFailure { Log.e(EVENT_TAG, "watch session resync failed", it) }
                     CommandAckResult.BLOCKED -> {
@@ -598,7 +601,7 @@ class PhoneWearListenerService : WearableListenerService() {
                     }
                     else -> Unit
                 }
-            }
+            }.onFailure { Log.w(EVENT_TAG, "command acknowledgement rejected; pending command retained", it) }
             WearSync.PATH_CAPTURE_ASSET_EMULATOR -> receiveEmulatorCapture(payload)
             WearSync.PATH_PAIR -> {
                 recoverCachedAssets()
@@ -606,7 +609,7 @@ class PhoneWearListenerService : WearableListenerService() {
                 sessionController.resync().onFailure { Log.e(EVENT_TAG, "paired watch resync failed", it) }
                 PhoneWorkoutService.retryPending(this)
                 sendBroadcast(Intent(ACTION_PAIR).setPackage(packageName).putExtra("payload", payload))
-                syncPersonalProfiles()
+                runCatching { syncPersonalProfiles() }.onFailure { Log.w(EVENT_TAG, "personal profile transfer retained", it) }
             }
             WearSync.PATH_WATCH_UI_READY -> {
                 recoverCachedAssets()
@@ -615,7 +618,7 @@ class PhoneWearListenerService : WearableListenerService() {
                 WatchWorkoutController(this) { outPath, value -> PhoneWorkoutService.send(this, outPath, value) }.sendOffer(System.currentTimeMillis())
                 PhoneWorkoutService.retryPending(this)
                 sendBroadcast(Intent(ACTION_WATCH_UI_READY).setPackage(packageName).putExtra("payload", payload))
-                syncPersonalProfiles()
+                runCatching { syncPersonalProfiles() }.onFailure { Log.w(EVENT_TAG, "personal profile transfer retained", it) }
             }
             WearSync.PATH_STATE, WearSync.PATH_LIVE -> {
                 prefs.edit().putString("state", payload).putLong("stateAt", System.currentTimeMillis()).apply()

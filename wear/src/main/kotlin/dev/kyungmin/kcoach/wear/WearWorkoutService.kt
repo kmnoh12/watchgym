@@ -106,9 +106,10 @@ class WearWorkoutService : Service(), SensorEventListener {
                 trackingProfile.mode != TrackingMode.MANUAL_REQUIRED && !paused && !countingPaused &&
                 dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId) == dev.kyungmin.kcoach.core.CapturePurpose.WORKOUT) {
                 val candidate = forearmRotationDetector?.candidateStartNs ?: profiledMotionDetector?.candidateStartNs
+                val lastMotion = forearmRotationDetector?.lastMotionNs ?: profiledMotionDetector?.lastMotionNs
                 if (setEndGate.shouldEnd(android.os.SystemClock.elapsedRealtimeNanos(), candidate,
                         profiledMotionDetector?.maximumCycleNs ?: (trackingProfile.maximumRepMs * 1_000_000L),
-                        setEndWaitNs())) {
+                        setEndWaitNs(), lastMotion)) {
                     try { completeSet() } catch (error: Exception) { runtimeFailure("set-timer", error) }
                 }
             }
@@ -153,11 +154,16 @@ class WearWorkoutService : Service(), SensorEventListener {
     private var finalizingCaptureId: String? = null
     private var captureLimitLogged = false
     private var restTicker: Runnable? = null
+    private var lastRestCueSecond = -1L
     private var phoneWatchdog: Runnable? = null
     private var calibrationStage: CalibrationStage? = null
     private var measurementReady = false
     private var measurementArmed = false
     private var startPoseGate: StartPoseStabilityGate? = null
+    private var phoneCheckPending = false
+    private var phoneCheckResting = false
+    private var phoneCheckSuppressedUntilNs = 0L
+    private var phoneCheckPendingSinceNs = 0L
     /** How long the wrist has been held still so far (calibration countdown on the watch screen). */
     private var preparationHoldMs = 0L
     private val capturePrefs by lazy { getSharedPreferences(CAPTURE_PREFS, MODE_PRIVATE) }
@@ -336,6 +342,8 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
         }
         when (type) {
+            "PHONE_CHECK_START" -> resolvePhoneCheck(start = true)
+            "PHONE_CHECK_REST" -> resolvePhoneCheck(start = false)
             "SET_RECORD" -> {
                 recordState.receive(intent?.getStringExtra("payload").orEmpty())?.let {
                     broadcastState(force = true)
@@ -1128,6 +1136,9 @@ class WearWorkoutService : Service(), SensorEventListener {
         restSeconds = intent.getIntExtra("restSeconds", 60).coerceAtLeast(0)
         running = true
         reps = 0
+        phoneCheckPending = false
+        phoneCheckResting = false
+        phoneCheckSuppressedUntilNs = 0L
         lastAccel = FloatArray(3); lastGyro = FloatArray(3)
         lastAccelerometerNs = null; lastAccelerometerAccuracy = null; lastHeartRateNs = null
         calibrationStage = if (dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId) == dev.kyungmin.kcoach.core.CapturePurpose.LEGACY_CALIBRATION) CalibrationStage.BASELINE else null
@@ -1322,7 +1333,8 @@ class WearWorkoutService : Service(), SensorEventListener {
         measurementArmed = measurementReady || needsStillStart
         startPoseGate = if (measurementReady) null else
             StartPoseStabilityGate(direction?.gateConfig ?: StartPoseGateConfig.forProfile(trackingProfile).copy(requireSetupMotion = false,
-                stableDurationMs = if (sessionId.startsWith("calibration-paired-") || needsStillStart) StartPoseGateConfig.WORKOUT_HOLD_MS else 2_000L))
+                stableDurationMs = if (sessionId.startsWith("calibration-paired-")) StartPoseGateConfig.PAIRED_CALIBRATION_HOLD_MS
+                    else if (needsStillStart) StartPoseGateConfig.WORKOUT_HOLD_MS else 2_000L))
         if (measurementReady && trackingProfile.mode != TrackingMode.MANUAL_REQUIRED) {
             forearmRotationDetector?.beginCounting()
             profiledMotionDetector?.beginCounting()
@@ -1349,6 +1361,8 @@ class WearWorkoutService : Service(), SensorEventListener {
         resting = true
         paused = false
         pausedRestRemainingMs = 0L
+        phoneCheckPending = false
+        phoneCheckResting = false
         unregisterMotionSensors()
         cancelMeasurementPreparation()
         restSeconds = intent.getIntExtra("restSeconds", 60).coerceAtLeast(0)
@@ -1367,11 +1381,16 @@ class WearWorkoutService : Service(), SensorEventListener {
         }
         sendLiveState("RESTING", false, force = true)
         stopRestTicker()
+        lastRestCueSecond = -1L
         val tick = object : Runnable {
             override fun run() {
                 if (!resting) return
                 try {
                     val left = ((restEndAtMs - System.currentTimeMillis() + 999) / 1_000).coerceAtLeast(0)
+                    if (left != lastRestCueSecond) {
+                        lastRestCueSecond = left
+                        if (left <= 0) vibrateRestEnd() else if (left <= 3) vibrateRestCountdown()
+                    }
                     sendLiveState("RESTING", false, force = true)
                     broadcastState()
                     if (left <= 0) {
@@ -1432,7 +1451,8 @@ class WearWorkoutService : Service(), SensorEventListener {
                 startPoseGate = StartPoseStabilityGate(startDirectionSnapshot.takeIf { it.isNotEmpty() }
                     ?.let(dev.kyungmin.kcoach.core.StartDirectionRuntimeCodec::decode)?.gateConfig
                     ?: StartPoseGateConfig.forProfile(trackingProfile).copy(requireSetupMotion = false,
-                        stableDurationMs = if (requiresStillStart()) StartPoseGateConfig.WORKOUT_HOLD_MS else StartPoseGateConfig().stableDurationMs))
+                        stableDurationMs = if (sessionId.startsWith("calibration-paired-")) StartPoseGateConfig.PAIRED_CALIBRATION_HOLD_MS
+                            else if (requiresStillStart()) StartPoseGateConfig.WORKOUT_HOLD_MS else StartPoseGateConfig().stableDurationMs))
                 measurementArmed = true
                 sendLiveState(currentWorkingPhase(), true, force = true)
             }
@@ -1554,21 +1574,37 @@ class WearWorkoutService : Service(), SensorEventListener {
                         sensorAccuracy = event.accuracy,
                     )
                     if (!measurementReady) {
+                        if (phoneCheckPending && phoneCheckPendingSinceNs > 0L &&
+                            sensorSample.timestampNs - phoneCheckPendingSinceNs >= 15_000_000_000L) {
+                            // No answer, no movement and still phone-viewing: leave it as rest, not a permanent prompt.
+                            resolvePhoneCheck(start = false)
+                        }
+                        if ((phoneCheckPending || phoneCheckResting) &&
+                            (!PhoneViewingStore(this).isViewing(sensorSample.timestampNs) || phoneCheckMotion(sensorSample))) {
+                            clearPhoneCheck()
+                        }
                         val gate = startPoseGate?.observe(sensorSample, lastAccelerometerNs, lastAccelerometerAccuracy)
                         measurementArmed = gate?.armed == true
                         preparationHoldMs = gate?.stableDurationMs ?: 0L
                         if (gate?.ready == true) {
-                            if (startDirectionSnapshot.isNotEmpty()) {
-                                startDirectionStatus = "CONFIRMED"
+                            if (phoneCheckPending || phoneCheckResting) {
+                                // Waiting for the watch answer or for the user to move / put the phone down.
+                            } else if (sensorSample.timestampNs >= phoneCheckSuppressedUntilNs &&
+                                PhoneViewingStore(this).isViewing(sensorSample.timestampNs)) {
+                                enterPhoneCheck()
+                            } else {
+                                if (startDirectionSnapshot.isNotEmpty()) {
+                                    startDirectionStatus = "CONFIRMED"
+                                }
+                                if (calibrationStage == CalibrationStage.BASELINE) {
+                                    calibrationStage = CalibrationStage.CONTROLLED_REPS
+                                    Log.i(CALIBRATION_TAG, "stage=CONTROLLED_REPS session=$sessionId exerciseId=$exerciseId")
+                                }
+                                beginMeasurementCounting()
+                                if (startDirectionSnapshot.isNotEmpty()) check(checkpoint())
+                                sendLiveState(currentWorkingPhase(), true, force = true)
+                                broadcastState(force = true)
                             }
-                            if (calibrationStage == CalibrationStage.BASELINE) {
-                                calibrationStage = CalibrationStage.CONTROLLED_REPS
-                                Log.i(CALIBRATION_TAG, "stage=CONTROLLED_REPS session=$sessionId exerciseId=$exerciseId")
-                            }
-                            beginMeasurementCounting()
-                            if (startDirectionSnapshot.isNotEmpty()) check(checkpoint())
-                            sendLiveState(currentWorkingPhase(), true, force = true)
-                            broadcastState(force = true)
                         }
                     } else {
                         if (startDirectionSnapshot.isNotEmpty() && countingStartNs == null) {
@@ -1581,10 +1617,11 @@ class WearWorkoutService : Service(), SensorEventListener {
                         captureSensorSample(sensorSample)
                         val countingSample = if (accelerationFault) sensorSample.copy(sensorAccuracy = 0) else sensorSample
                         val candidate = forearmRotationDetector?.candidateStartNs ?: profiledMotionDetector?.candidateStartNs
+                        val lastMotion = forearmRotationDetector?.lastMotionNs ?: profiledMotionDetector?.lastMotionNs
                         if (calibrationStage == null && dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId) == dev.kyungmin.kcoach.core.CapturePurpose.WORKOUT &&
                             setEndGate.shouldEnd(sensorSample.timestampNs, candidate,
                                 profiledMotionDetector?.maximumCycleNs ?: (trackingProfile.maximumRepMs * 1_000_000L),
-                                setEndWaitNs())) {
+                                setEndWaitNs(), lastMotion)) {
                             completeSet()
                             return
                         }
@@ -1706,6 +1743,66 @@ class WearWorkoutService : Service(), SensorEventListener {
             Log.i(TAG, "forearm rotation diagnostics=$rotationDiagnostics")
         }
         Log.i(TAG, "completeSet end manual=$manual session=$sessionId set=$setIndex reps=$reps")
+    }
+
+    private fun phoneCheckMotion(sample: SensorSample): Boolean {
+        val gyro = kotlin.math.sqrt(
+            sample.gyroscopeX.toDouble() * sample.gyroscopeX +
+                sample.gyroscopeY.toDouble() * sample.gyroscopeY +
+                sample.gyroscopeZ.toDouble() * sample.gyroscopeZ,
+        )
+        val accel = kotlin.math.sqrt(
+            sample.accelerationX.toDouble() * sample.accelerationX +
+                sample.accelerationY.toDouble() * sample.accelerationY +
+                sample.accelerationZ.toDouble() * sample.accelerationZ,
+        )
+        return gyro >= 1.0 || kotlin.math.abs(accel - 9.80665) >= 0.8
+    }
+
+    private fun enterPhoneCheck() {
+        if (phoneCheckPending) return
+        phoneCheckPending = true
+        phoneCheckResting = false
+        phoneCheckPendingSinceNs = android.os.SystemClock.elapsedRealtimeNanos()
+        measurementReady = false
+        measurementArmed = true
+        startPoseGate?.reset()
+        preparationHoldMs = 0L
+        vibratePhoneCheck()
+        broadcastState(force = true)
+    }
+
+    private fun clearPhoneCheck() {
+        if (!phoneCheckPending && !phoneCheckResting) return
+        phoneCheckPending = false
+        phoneCheckResting = false
+        phoneCheckPendingSinceNs = 0L
+        phoneCheckSuppressedUntilNs = android.os.SystemClock.elapsedRealtimeNanos() + 30_000_000_000L
+        startPoseGate?.reset()
+        preparationHoldMs = 0L
+        broadcastState(force = true)
+    }
+
+    /** Start: user says not resting; Rest: stay waiting until movement or phone down. */
+    private fun resolvePhoneCheck(start: Boolean) {
+        if (!phoneCheckPending && !phoneCheckResting) return
+        phoneCheckPending = false
+        phoneCheckResting = !start
+        phoneCheckPendingSinceNs = 0L
+        phoneCheckSuppressedUntilNs = android.os.SystemClock.elapsedRealtimeNanos() + 30_000_000_000L
+        startPoseGate?.reset()
+        preparationHoldMs = 0L
+        broadcastState(force = true)
+    }
+
+    private fun vibratePhoneCheck() {
+        val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
+        val timings = longArrayOf(0L, 35L, 25L, 35L, 25L, 35L, 25L, 35L, 25L, 35L, 25L, 35L)
+        val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255)
+        vibrator.vibrate(
+            if (vibrator.hasAmplitudeControl()) VibrationEffect.createWaveform(timings, amplitudes, -1)
+            else VibrationEffect.createWaveform(timings, -1),
+        )
     }
 
     private fun beginMeasurementCounting() {
@@ -2304,7 +2401,7 @@ class WearWorkoutService : Service(), SensorEventListener {
             if (dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId) != dev.kyungmin.kcoach.core.CapturePurpose.WORKOUT && !measurementReady) {
                 if (running) putExtra("phase", "BASELINE")
                 putExtra("preparationHoldMs", preparationHoldMs)
-                putExtra("preparationHoldTargetMs", if (sessionId.startsWith("calibration-paired-")) 3_000L else StartPoseGateConfig.forProfile(trackingProfile).stableDurationMs)
+                putExtra("preparationHoldTargetMs", if (sessionId.startsWith("calibration-paired-")) StartPoseGateConfig.PAIRED_CALIBRATION_HOLD_MS else StartPoseGateConfig.forProfile(trackingProfile).stableDurationMs)
             }
             calibrationCameraState.applyTo(this, sessionId)
         })
@@ -2316,6 +2413,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         !resting && manualOutbox.latest(sessionId, setId, attemptId)?.let { it.ack == null } == true -> "MANUAL_PENDING"
         paused -> "PAUSED"
         resting -> "RESTING"
+        phoneCheckPending -> "PHONE_CHECK"
         running -> currentWorkingPhase()
         sessionId.isNotBlank() -> "READY"
         else -> "IDLE"
@@ -2338,10 +2436,27 @@ class WearWorkoutService : Service(), SensorEventListener {
         }
     }
 
+    private fun vibrateRestCountdown() {
+        val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
+        val amplitude = if (vibrator.hasAmplitudeControl()) 255 else VibrationEffect.DEFAULT_AMPLITUDE
+        vibrator.vibrate(VibrationEffect.createOneShot(70L, amplitude))
+    }
+
+    /** Three short pulses then one long pulse: stronger and longer than a rep tick. */
+    private fun vibrateRestEnd() {
+        val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
+        val timings = longArrayOf(0L, 100L, 70L, 100L, 70L, 200L)
+        val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255)
+        vibrator.vibrate(
+            if (vibrator.hasAmplitudeControl()) VibrationEffect.createWaveform(timings, amplitudes, -1)
+            else VibrationEffect.createWaveform(timings, -1),
+        )
+    }
+
     private fun vibrateShort(force: Boolean = false) {
         if (!running && !force) return
         val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
-        // Full strength and 55 ms: a 35 ms pulse barely spins the watch motor up, so it was hard to feel mid-set.
+        // Full strength and 100 ms: a 55 ms pulse barely spins the watch motor up, so it was hard to feel mid-set.
         // The target pulse stays distinct as three pulses.
         val amplitude = if (vibrator.hasAmplitudeControl()) REP_TICK_AMPLITUDE else VibrationEffect.DEFAULT_AMPLITUDE
         vibrator.vibrate(VibrationEffect.createOneShot(REP_TICK_MS, amplitude))
@@ -2359,8 +2474,12 @@ class WearWorkoutService : Service(), SensorEventListener {
 
     private fun vibrateReady() {
         if (!running) return
-        getSystemService(android.os.Vibrator::class.java)?.vibrate(
-            VibrationEffect.createWaveform(longArrayOf(0L, 90L, 70L, 130L), -1),
+        val vibrator = getSystemService(android.os.Vibrator::class.java) ?: return
+        val timings = longArrayOf(0L, 100L, 70L, 180L)
+        val amplitudes = intArrayOf(0, 255, 0, 255)
+        vibrator.vibrate(
+            if (vibrator.hasAmplitudeControl()) VibrationEffect.createWaveform(timings, amplitudes, -1)
+            else VibrationEffect.createWaveform(timings, -1),
         )
     }
 
@@ -2398,7 +2517,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         private const val CHANNEL_ID = "kcoach_wear_workout"
         private const val NOTIFICATION_ID = 4102
         private const val REP_TICK_AMPLITUDE = 255
-        private const val REP_TICK_MS = 55L
+        private const val REP_TICK_MS = 100L
         private const val PHONE_HEARTBEAT_TIMEOUT_MS = 12_000L
         private const val PHONE_WATCHDOG_INTERVAL_MS = 3_000L
         private const val CAPTURE_PREFS = "capture-outbox"

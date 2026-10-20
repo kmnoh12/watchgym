@@ -30,9 +30,15 @@ object TrackingProfileSnapshot {
             }
             val generic = ExerciseTrackingProfiles.resolve(p.exerciseId, p.label)
             // Only explicitly migrated exercises may replay their old combined-signal press engine.
-            val migratedPress = p.exerciseId in setOf("dumbbell_shoulder_press", "smith_shoulder_press") &&
-                generic.family == MotionFamily.VERTICAL_PRESS_RETURN ||
-                p.exerciseId == "rope_extension" && generic.family == MotionFamily.FLEXION_EXTENSION
+            val migratedPress = p.exerciseId in setOf(
+                "dumbbell_shoulder_press", "smith_shoulder_press",
+                "flat_bench", "incline_bench", "dumbbell_bench", "decline_barbell_bench_press",
+                "incline_dumbbell_bench_press", "decline_dumbbell_bench_press",
+                "smith_flat_bench_press", "smith_incline_bench_press", "single_arm_dumbbell_bench_press",
+                "cable_pushdown", "reverse_grip_pushdown", "single_arm_cable_pushdown", "rope_pushdown",
+                "ez_lying_extension", "rope_extension",
+            ) && generic.family in setOf(MotionFamily.VERTICAL_PRESS_RETURN, MotionFamily.TRANSLATION_PRESS_RETURN,
+                MotionFamily.FLEXION_EXTENSION)
             val historicalPress = migratedPress &&
                 p.family == MotionFamily.PRESS_RETURN && p.signal == TrackingSignal.COMBINED_MOTION
             // Recordings made before these exercises moved to the cycle-axis engine replay with their frozen engine.

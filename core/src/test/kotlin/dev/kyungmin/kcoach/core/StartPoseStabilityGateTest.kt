@@ -99,18 +99,32 @@ class StartPoseStabilityGateTest {
     }
 
     @Test
-    fun aWorkoutStartNeedsTwoAndAHalfStillSecondsAndAnyMovementRestartsTheCount() {
+    fun aWorkoutStartNeedsOneAndAHalfStillSecondsAndAnyMovementRestartsTheCount() {
         val gate = StartPoseStabilityGate(config.copy(stableDurationMs = StartPoseGateConfig.WORKOUT_HOLD_MS, requireSetupMotion = false))
         var timestamp = 1_000_000_000L
         var observation = gate.observe(sample(timestamp, gyro = 0.05f))
-        repeat(23) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
-        assertFalse(observation.ready, "2.3 s of stillness is not enough")
+        repeat(13) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
+        assertFalse(observation.ready, "1.3 s of stillness is not enough")
         timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 1.5f))
         assertFalse(observation.stable, "a shake restarts the hold")
-        repeat(23) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
-        assertFalse(observation.ready, "2.3 s after the shake is still not enough")
-        repeat(6) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
+        repeat(13) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
+        assertFalse(observation.ready, "1.3 s after the shake is still not enough")
+        repeat(3) { timestamp += 100_000_000L; observation = gate.observe(sample(timestamp, gyro = 0.05f)) }
         assertTrue(observation.ready)
+    }
+
+    @Test
+    fun aStableWristPassesInAnyGravityDirectionSoThisIsNotAPostureGate() {
+        for ((ax, az) in listOf(9.8f to 0f, 0f to 9.8f, -6.9f to 6.9f)) {
+            val gate = StartPoseStabilityGate(config.copy(stableDurationMs = StartPoseGateConfig.WORKOUT_HOLD_MS, requireSetupMotion = false))
+            var timestamp = 1_000_000_000L
+            var observation = gate.observe(sample(timestamp, gyro = 0.05f, ax = ax, az = az))
+            repeat(21) {
+                timestamp += 100_000_000L
+                observation = gate.observe(sample(timestamp, gyro = 0.05f, ax = ax, az = az))
+            }
+            assertTrue(observation.ready, "ax=$ax az=$az")
+        }
     }
 
     private fun arm(gate: StartPoseStabilityGate, startTimestamp: Long): Long {

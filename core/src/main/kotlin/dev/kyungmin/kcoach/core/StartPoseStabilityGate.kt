@@ -15,7 +15,7 @@ data class StartPoseGateConfig(
     val minCandidateSamples: Int = 3,
     val maxGyroMagnitude: Double = 0.90,
     val maxGravityMagnitudeError: Double = 3.50,
-    val maxOrientationDrift: Double = 0.32,
+    val maxOrientationDrift: Double = 0.20,
     val maxSampleGapMs: Long = 750L,
     val requireSetupMotion: Boolean = true,
     val minSetupMotionGyro: Double = 1.00,
@@ -24,8 +24,16 @@ data class StartPoseGateConfig(
     val maxAccelerationAgeMs: Long = 100L,
 ) {
     companion object {
-        /** A workout set waits for the wrist to hold still this long before the start buzz and counting. */
-        const val WORKOUT_HOLD_MS = 2_500L
+        /**
+         * A workout set waits for the wrist to hold still this long before the start buzz and counting.
+         * Five real Watch8 preparation captures reached a stable hold at 1.50-1.56 s with the
+         * 0.20 rad drift bound. Phone-viewing suspicion is handled by a separate confirmation, so
+         * this is a wrist setup gate, not posture recognition.
+         */
+        const val WORKOUT_HOLD_MS = 1_500L
+
+        /** Paired calibration keeps its longer, camera-synchronised preparation hold. */
+        const val PAIRED_CALIBRATION_HOLD_MS = 3_000L
 
         fun forProfile(profile: ExerciseTrackingProfile): StartPoseGateConfig = when (profile.signal) {
             TrackingSignal.FOREARM_ROTATION -> StartPoseGateConfig(

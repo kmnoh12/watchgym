@@ -36,4 +36,17 @@ class RopePoseEvidenceTest {
             println("$id frozen=${before.size} current=${after.size} end_s=${after.map { (it.endTimestampNs-t0)/1e9 }}")
         }
     }
+
+    @Test fun `translation pushdown detector also counts the real pushdown captures within one`() {
+        val root = System.getenv("KCOACH_ROPE_EVIDENCE_DIR")?.let(::File)
+        assumeTrue(root?.isDirectory == true, "Configure private extracted rope captures")
+        for (id in listOf("9cf833a3", "cfc9dc8b", "9fb34269")) {
+            val records = File(root!!, "$id/watch.kcs").inputStream().use(SensorCaptureFormat::read)
+            val detector = ProfiledMotionRepDetector(ExerciseTrackingProfiles.resolve("cable_pushdown"))
+            detector.beginCounting()
+            val events = records.records.mapNotNull { detector.add(SensorRecordQuality.forCounting(it)) }
+            assertTrue(events.size in 9..10, "$id translation pushdown=${events.size}")
+            println("$id translation_pushdown=${events.size}")
+        }
+    }
 }

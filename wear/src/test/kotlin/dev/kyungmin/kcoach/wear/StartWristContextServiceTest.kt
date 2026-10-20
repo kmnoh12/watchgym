@@ -169,14 +169,14 @@ class StartWristContextServiceTest {
         try {
             restored.get().onStartCommand(Intent().putExtra("command", "RESUME").putExtra("session", "session").putExtra("commandRevision", 4L), 0, 4)
             assertEquals("PREPARING", state().getStringExtra("phase"))
-            repeat(135) { sample(restored.get()) } // a still wrist for two and a half seconds starts the measurement and its capture
+            repeat(135) { sample(restored.get()) } // a still wrist for two seconds starts the measurement and its capture
             restored.get().onStartCommand(Intent().putExtra("command", "STOP").putExtra("session", "session").putExtra("commandRevision", 5L), 0, 5)
             val manifest = WireCodec.decode(app.filesDir.listFiles()!!.single { it.name.endsWith(".manifest") }.readText())
             assertEquals(declared, StartWristContextCodec.decode(manifest.payload.getValue("startWristContext")))
             assertEquals(WearClockEpoch.current(app).deviceId, manifest.payload["startWristDeviceId"])
             assertEquals("UNCONFIRMED", manifest.payload["startDirectionStatus"])
             val raw = app.filesDir.listFiles()!!.single { it.name.endsWith(".kcs") }
-            assertTrue("Only samples after the still start hold are captured", SensorCaptureFormat.read(raw.inputStream()).sampleCount in 1..30)
+            assertTrue("Only samples after the still start hold are captured", SensorCaptureFormat.read(raw.inputStream()).sampleCount in 1..80)
         } finally { restored.destroy() }
     }
     @Test fun authoritativeRestSyncDoesNotRequireAWorkingStartContext() {

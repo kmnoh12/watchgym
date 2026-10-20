@@ -9,6 +9,7 @@ enum class MotionFamily {
     FLEXION_EXTENSION,
     PRESS_RETURN,
     VERTICAL_PRESS_RETURN,
+    TRANSLATION_PRESS_RETURN,
     PULL_RETURN,
     MULTI_AXIS_RETURN,
     FOREARM_ROTATION,
@@ -20,6 +21,7 @@ enum class MotionFamily {
             FLEXION_EXTENSION -> "flexion-extension-pose-v4"
             PRESS_RETURN -> "press-return-family-v4"
             VERTICAL_PRESS_RETURN -> "vertical-press-return-family-v1"
+            TRANSLATION_PRESS_RETURN -> "translation-press-return-family-v1"
             PULL_RETURN -> "pull-return-family-v4"
             MULTI_AXIS_RETURN -> "multi-axis-return-family-v4"
             FOREARM_ROTATION -> "forearm-rotation-family-v4"
@@ -39,6 +41,7 @@ enum class MotionFamily {
             FLEXION_EXTENSION -> "굴곡-신전 공통 측정"
             PRESS_RETURN -> "프레스-복귀 공통 측정"
             VERTICAL_PRESS_RETURN -> "상하 프레스-복귀 측정"
+            TRANSLATION_PRESS_RETURN -> "이동 프레스-복귀 측정"
             PULL_RETURN -> "당김-복귀 공통 측정"
             MULTI_AXIS_RETURN -> "다축 왕복 공통 측정"
             FOREARM_ROTATION -> "전완 회전 공통 측정"
@@ -78,6 +81,7 @@ class ProfiledMotionRepDetector(
 
     private val poseCounter = if (profile.family == MotionFamily.FLEXION_EXTENSION) ReturnToPoseRepDetector(profile.minimumRepMs) else null
     private val verticalCounter = if (profile.family == MotionFamily.VERTICAL_PRESS_RETURN) VerticalPressRepDetector(profile) else null
+    private val translationCounter = if (profile.family == MotionFamily.TRANSLATION_PRESS_RETURN) TranslationPressRepDetector(profile) else null
     private val cycleCounter = if (profile.family == MotionFamily.CYCLE_AXIS_RETURN) CycleAxisRepDetector() else null
     private val legacyLobes = profile.id.substringBefore('+') == profile.family.legacyAlgorithmId
 
@@ -102,12 +106,18 @@ class ProfiledMotionRepDetector(
 
     // Pose counting previously allowed long top holds without a maximum duration.
     // Bound set-end grace at 12s, preserving slow returns; this policy still needs Watch8 validation.
-    val maximumCycleNs: Long get() = verticalCounter?.maximumCycleNs ?: cycleCounter?.maximumCycleNs ?: if (poseCounter != null) 12_000_000_000L else profile.maximumRepMs * 1_000_000L
+    val maximumCycleNs: Long get() = translationCounter?.maximumCycleNs ?: verticalCounter?.maximumCycleNs ?: cycleCounter?.maximumCycleNs ?: if (poseCounter != null) 12_000_000_000L else profile.maximumRepMs * 1_000_000L
 
-    val candidateStartNs: Long? get() = if (cycleCounter != null) null else verticalCounter?.candidateStartNs ?: poseCounter?.candidateStartNs ?: pendingStartNs.takeIf { it > 0L }
+    /** Latest sample that looked like working motion, even when no complete rep was accepted. */
+    var lastMotionNs: Long = 0L
+        private set
+
+    val candidateStartNs: Long? get() = if (cycleCounter != null) null else translationCounter?.candidateStartNs ?: verticalCounter?.candidateStartNs ?: poseCounter?.candidateStartNs ?: pendingStartNs.takeIf { it > 0L }
         ?: lobeStartNs.takeIf { it > 0L && lobeDisplacement >= profile.minimumLobeDisplacement }
 
     fun add(sample: SensorSample): ProfiledMotionRepEvent? {
+        trackMotion(sample)
+        translationCounter?.let { return it.add(sample) }
         verticalCounter?.let { return it.add(sample) }
         cycleCounter?.let { return it.add(sample) }
         poseCounter?.let { return it.add(sample) }
@@ -160,7 +170,7 @@ class ProfiledMotionRepDetector(
     }
 
     fun finish(): ProfiledMotionRepEvent? {
-        if (verticalCounter != null || cycleCounter != null) return null
+        if (translationCounter != null || verticalCounter != null || cycleCounter != null) return null
         if (poseCounter != null) return null // A partial return never becomes a rep when the set ends.
         if (!legacyLobes) { resetAll(); return null } // Only observed quiet/reversal closes a new-engine lobe.
         if (direction == 0 || lastTimestampNs == 0L) return null
@@ -174,9 +184,10 @@ class ProfiledMotionRepDetector(
      * estimate learned from the user's real starting pose.
      */
     /** Offline end of stream: every rep still undelivered (the cycle engine confirms reps with a delay). */
-    fun finishAll(): List<ProfiledMotionRepEvent> = cycleCounter?.finishAll() ?: listOfNotNull(finish())
+    fun finishAll(): List<ProfiledMotionRepEvent> = translationCounter?.finishAll() ?: cycleCounter?.finishAll() ?: listOfNotNull(finish())
 
     fun beginCounting() {
+        translationCounter?.beginCounting()
         verticalCounter?.beginCounting()
         cycleCounter?.beginCounting()
         poseCounter?.reset()
@@ -191,6 +202,25 @@ class ProfiledMotionRepDetector(
         refractoryUntilNs = 0L
         lockedAxis = -1
         lastTimestampNs = 0L
+        lastMotionNs = 0L
+    }
+
+    private fun trackMotion(sample: SensorSample) {
+        if (sample.sensorAccuracy == 0) return
+        val gyro = sqrt(
+            sample.gyroscopeX.toDouble() * sample.gyroscopeX +
+                sample.gyroscopeY.toDouble() * sample.gyroscopeY +
+                sample.gyroscopeZ.toDouble() * sample.gyroscopeZ,
+        )
+        val acceleration = sqrt(
+            sample.accelerationX.toDouble() * sample.accelerationX +
+                sample.accelerationY.toDouble() * sample.accelerationY +
+                sample.accelerationZ.toDouble() * sample.accelerationZ,
+        )
+        if (gyro.isFinite() && gyro >= 0.25 ||
+            acceleration.isFinite() && abs(acceleration - 9.80665) >= 0.25) {
+            lastMotionNs = sample.timestampNs
+        }
     }
 
     private fun featureVector(sample: SensorSample): DoubleArray {

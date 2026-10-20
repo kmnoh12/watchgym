@@ -251,6 +251,10 @@ class MainActivity : ComponentActivity() {
                         text = when (intent.getStringExtra("reason")) {
                             "CLOSED_SESSION" -> "워치에서 종료된 세션이에요 · 새 운동을 시작해 주세요"
                             "STALE" -> "워치 명령 순서를 확인할 수 없어요 · 연결을 다시 확인해 주세요"
+                            "BINDING" -> "세트 정보가 바뀌어 워치 명령을 보내지 못했어요 · 세트를 다시 열어주세요"
+                            "OUTBOX" -> "워치 명령을 저장하지 못했어요 · 잠시 후 다시 시도해 주세요"
+                            "SERVICE_START" -> "워치 연결 서비스를 시작하지 못했어요 · 앱을 다시 열어 주세요"
+                            "INVALID" -> "워치 명령 형식이 맞지 않아 보내지 않았어요 · 세트를 다시 열어주세요"
                             else -> "워치 명령을 적용하지 못했어요 · 운동 상태를 확인해 주세요"
                         }
                         setTextColor(amber)
@@ -530,8 +534,10 @@ class MainActivity : ComponentActivity() {
             ComposeView(this).apply { setContent { OverlayHost(overlays) } },
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
         )
-        startService(Intent(this, PhoneWearListenerService::class.java))
-        startService(Intent(this, PhoneWorkoutService::class.java))
+        runCatching { startService(Intent(this, PhoneWearListenerService::class.java)) }
+            .onFailure { Log.w(EVENT_TAG, "watch listener start deferred until the next foreground launch", it) }
+        runCatching { startService(Intent(this, PhoneWorkoutService::class.java)) }
+            .onFailure { Log.w(EVENT_TAG, "watch runtime start deferred; durable commands remain", it) }
         handledResultRequests.addAll(restorationState?.getStringArrayList(STATE_HANDLED_RESULT_REQUESTS).orEmpty())
         val requestKey = WorkoutResultIntent.requestKey(intent)
         val replayedRequest = requestKey != null && requestKey in handledResultRequests
@@ -1288,6 +1294,10 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "보정을 종료한 뒤 운동을 시작해 주세요", Toast.LENGTH_LONG).show()
             return
         }
+        if (routine.exercises.isEmpty() || routine.exercises.all { it.sets.isEmpty() }) {
+            Toast.makeText(this, "운동과 세트를 먼저 추가해 주세요", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (sessionStore.loadActive().getOrNull() != null) {
             activeWorkout = restoreActiveWorkout()
             if (activeWorkout != null) showActiveWorkout()
@@ -1418,7 +1428,8 @@ class MainActivity : ComponentActivity() {
                         liveTitle = liveTitle,
                         liveTelemetry = liveTelemetry,
                         animationView = { index ->
-                            exerciseAnimationView(current.routine.exercises[index].exercise, 190)
+                            current.routine.exercises.getOrNull(index)?.let { exerciseAnimationView(it.exercise, 190) }
+                                ?: android.view.View(this@MainActivity)
                         },
                     )
                 }
@@ -2304,15 +2315,21 @@ class MainActivity : ComponentActivity() {
                 actions = listOf(
                     SheetAction("이전에 세트 추가", false) {
                         dismiss()
-                        routineExercise.sets.add(setIndex, PlannedSet(set.weightKg, set.targetReps))
-                        // syncWorkingSet skips resting, so a changed set list must be pushed explicitly.
-                        if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
+                        if (setIndex in routineExercise.sets.indices) {
+                            routineExercise.sets.add(setIndex.coerceIn(0, routineExercise.sets.size),
+                                PlannedSet(set.weightKg, set.targetReps))
+                            // syncWorkingSet skips resting, so a changed set list must be pushed explicitly.
+                            if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
+                        }
                     },
                     SheetAction("세트 삭제", true) {
                         dismiss()
-                        if (routineExercise.sets.size > 1) routineExercise.sets.removeAt(setIndex)
-                        workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(routineExercise.sets.lastIndex)
-                        if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
+                        if (routineExercise.sets.size > 1 && setIndex in routineExercise.sets.indices) {
+                            routineExercise.sets.removeAt(setIndex)
+                            workout.setIndex = workout.setIndex.coerceIn(0, routineExercise.sets.lastIndex)
+                            workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(routineExercise.sets.lastIndex)
+                            if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
+                        }
                     },
                 ),
             )
@@ -2635,6 +2652,7 @@ class MainActivity : ComponentActivity() {
         }
         showPopup { dismiss ->
             ConfirmDialog("${exercise.name} 삭제", "이 루틴에서 운동을 삭제할까요?", "취소", "삭제", dismiss) {
+                if (index !in routine.exercises.indices) { dismiss(); return@ConfirmDialog }
                 routine.exercises.removeAt(index)
                 active?.let {
                     if (it.routine === routine) {
@@ -2664,6 +2682,19 @@ class MainActivity : ComponentActivity() {
         val labels = alternatives.map { "${it.name}\n${it.muscles} · ${it.equipment}" }
         showPopup { dismiss ->
             PickDialog("운동 대체\n${current.name}", labels, dismiss) { which ->
+                if (which !in alternatives.indices || index !in routine.exercises.indices) { dismiss(); return@PickDialog }
+                val running = activeWorkout?.takeIf { it.routine === routine }
+                if (running != null) {
+                    if (routine.exercises[index].sets.any { it.completed }) {
+                        return@PickDialog Toast.makeText(this, "완료한 세트가 있는 운동은 대체할 수 없어요", Toast.LENGTH_SHORT).show()
+                    }
+                    // A set identity is frozen to one exercise once it is sent to the watch; a swapped exercise needs fresh attempts.
+                    routine.exercises[index].sets.forEachIndexed { setIndex, set ->
+                        running.analyses.remove(SetIdentity.key(current.id, setIndex, set.setId, set.attemptId))
+                        set.attemptId = java.util.UUID.randomUUID().toString()
+                        set.identityRequired = true
+                    }
+                }
                 routine.exercises[index] = routine.exercises[index].copy(exercise = alternatives[which])
                 if (routines.any { it === routine }) saveRoutineLibrary()
                 commitRunningRoutineEdit(routine)
@@ -2989,7 +3020,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendWear(path: String, payload: String) {
-        PhoneWorkoutService.send(this, path, payload)
+        // A rejected binding (e.g. an edit that changed a frozen set) must never take the whole app down mid-workout.
+        runCatching { PhoneWorkoutService.send(this, path, payload) }.onFailure {
+            Log.w("KCoachEvent", "watch command rejected; app kept running", it)
+            Toast.makeText(this, "워치 동기화에 실패했어요. 세트를 다시 열어주세요", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun workoutSnapshot(workout: ActiveWorkout): WorkoutSnapshot = WorkoutSnapshot(
@@ -3093,12 +3128,13 @@ class MainActivity : ComponentActivity() {
             val restSeconds = routine.exercises.getOrNull(snapshot.exerciseIndex)?.restSeconds ?: 0
             activeRestStartAtMs = snapshot.restEndAtMs - restSeconds * 1_000L
         }
+        val (restoredExerciseIndex, restoredSetIndex) = restoredCursor(snapshot, routine)
         return ActiveWorkout(
             routine = routine,
             startedAtMs = snapshot.startedAtMs,
             sessionId = snapshot.sessionId,
-            exerciseIndex = snapshot.exerciseIndex.coerceAtMost(routine.exercises.size),
-            setIndex = snapshot.setIndex,
+            exerciseIndex = restoredExerciseIndex,
+            setIndex = restoredSetIndex,
             performedRepsByExercise = snapshot.performedReps.toMutableMap(),
             paused = snapshot.paused,
             pausedSinceMs = snapshot.pausedSinceMs,
@@ -3119,7 +3155,15 @@ class MainActivity : ComponentActivity() {
             SetIdentity.migratedId(snapshot.sessionId, it.exerciseIndex, it.setIndex)
         }, it.exerciseId, it.exerciseIndex to it.setIndex) }
         if (currentLayout != savedLayout) {
-            val restored = restoreWorkoutRoutine(snapshot, workout.routine)
+            val restored = runCatching { restoreWorkoutRoutine(snapshot, workout.routine) }.getOrElse {
+                // A stale or corrupt layout must not kill the running screen; keep the in-memory plan.
+                Log.e(EVENT_TAG, "saved set layout rejected; current workout retained", it)
+                activeLiveStatus?.apply {
+                    text = "저장된 세트 구성을 읽지 못했어요 · 현재 운동은 유지 중"
+                    setTextColor(amber)
+                }
+                return
+            }
             workout.routine.exercises.clear()
             workout.routine.exercises.addAll(restored.exercises)
             workout.setIndexByExercise.clear()

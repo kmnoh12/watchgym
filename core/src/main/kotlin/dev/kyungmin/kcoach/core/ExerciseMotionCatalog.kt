@@ -46,6 +46,12 @@ object MotionFamilyTemplates {
             MotionFamily.VERTICAL_PRESS_RETURN, TrackingSignal.DYNAMIC_ACCELERATION,
             600L, 8_000L, 0L, 0.0, 0.12, 0.04, 150L, 3_000L,
         ),
+        // Translation-dominant bench press and fixed-wrist pushdown. The detector owns its
+        // displacement/span floors; these are the shared repetition timing bounds.
+        MotionFamilyTemplate(
+            MotionFamily.TRANSLATION_PRESS_RETURN, TrackingSignal.DYNAMIC_ACCELERATION,
+            600L, 8_000L, 0L, 0.0, 0.05, 0.04, 150L, 5_000L,
+        ),
         MotionFamilyTemplate(
             MotionFamily.PULL_RETURN, TrackingSignal.COMBINED_MOTION,
             500L, 6_000L, 650L, 0.15, 0.14, 0.07, 120L, 2_200L,
@@ -97,17 +103,17 @@ object ExerciseMotionCatalog {
         binding("incline_hammer_curl", "인클라인 해머 컬", MotionFamily.FLEXION_EXTENSION, CapabilityTier.A_WRIST_DIRECT_AUTO, "neutral_grip"),
         binding("dumbbell_curl", "덤벨 바이셉 컬", MotionFamily.FLEXION_EXTENSION),
         binding("dumbbell_pullover", "덤벨 풀오버", MotionFamily.MULTI_AXIS_RETURN),
-        binding("flat_bench", "플랫 벤치프레스", MotionFamily.PRESS_RETURN, grip = "same_grip_width"),
-        binding("incline_bench", "인클라인 벤치프레스", MotionFamily.PRESS_RETURN, grip = "same_grip_width"),
+        binding("flat_bench", "플랫 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, grip = "same_grip_width"),
+        binding("incline_bench", "인클라인 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, grip = "same_grip_width"),
         binding("chest_press", "체스트프레스", MotionFamily.PRESS_RETURN),
-        binding("dumbbell_bench", "덤벨 벤치프레스", MotionFamily.PRESS_RETURN),
+        binding("dumbbell_bench", "덤벨 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN),
         binding("machine_fly", "머신 플라이", MotionFamily.MULTI_AXIS_RETURN),
-        binding("cable_pushdown", "케이블 푸시다운", MotionFamily.PRESS_RETURN),
-        binding("cable_overhead_extension", "케이블 오버헤드 익스텐션", MotionFamily.FLEXION_EXTENSION),
-        binding("rope_extension", "로프 익스텐션", MotionFamily.FLEXION_EXTENSION),
-        binding("rope_overhead_extension", "로프 오버헤드 익스텐션", MotionFamily.FLEXION_EXTENSION),
+        binding("cable_pushdown", "케이블 스트레이트바 푸시다운", MotionFamily.TRANSLATION_PRESS_RETURN),
+        binding("cable_overhead_extension", "케이블 스트레이트바 오버헤드 익스텐션", MotionFamily.FLEXION_EXTENSION),
+        binding("rope_extension", "케이블 로프 푸시다운", MotionFamily.FLEXION_EXTENSION),
+        binding("rope_overhead_extension", "케이블 로프 오버헤드 익스텐션", MotionFamily.FLEXION_EXTENSION),
         binding("dumbbell_triceps_extension", "덤벨 트라이셉스 익스텐션", MotionFamily.CYCLE_AXIS_RETURN),
-        binding("ez_lying_extension", "이지바 라잉 익스텐션", MotionFamily.PRESS_RETURN),
+        binding("ez_lying_extension", "이지바 라이잉 트라이셉 익스텐션", MotionFamily.FLEXION_EXTENSION),
         binding("external_rotation", "케이블 외회전", MotionFamily.FOREARM_ROTATION, CapabilityTier.C_PERSONALIZED_AUTO_COUNT_BETA),
         binding("crossover_reverse_fly", "크로스오버 리버스 플라이", MotionFamily.MULTI_AXIS_RETURN),
         binding("smith_shoulder_press", "스미스 숄더프레스", MotionFamily.VERTICAL_PRESS_RETURN),
@@ -130,15 +136,16 @@ object ExerciseMotionCatalog {
         manual("hip_abduction", "힙 어브덕션"),
 
         // 가슴 — approved 2026-10-19 catalog
-        binding("decline_barbell_bench_press", "디클라인 바벨 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("incline_dumbbell_bench_press", "인클라인 덤벨 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("decline_dumbbell_bench_press", "디클라인 덤벨 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("smith_flat_bench_press", "스미스 플랫 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("smith_incline_bench_press", "스미스 인클라인 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("machine_chest_press_plate", "플레이트 체스트프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("incline_machine_chest_press_pin", "인클라인 머신 체스트프레스(핀식)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("incline_machine_chest_press_plate", "인클라인 플레이트 체스트프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("decline_machine_chest_press", "디클라인 머신 체스트프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("decline_barbell_bench_press", "디클라인 바벨 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("incline_dumbbell_bench_press", "인클라인 덤벨 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("decline_dumbbell_bench_press", "디클라인 덤벨 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("smith_flat_bench_press", "스미스 플랫 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("smith_incline_bench_press", "스미스 인클라인 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("machine_chest_press_plate", "플레이트 머신 체스트프레스(앉아서)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("incline_machine_chest_press_pin", "인클라인 머신 체스트프레스(핀식, 앉아서)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("incline_machine_chest_press_plate", "인클라인 플레이트 머신 체스트프레스(앉아서)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("decline_machine_chest_press", "디클라인 머신 체스트프레스(앉아서)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("flat_machine_bench_press", "플랫 머신 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("cable_fly_high", "케이블 플라이(하이)", MotionFamily.MULTI_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("cable_fly_mid", "케이블 플라이(미들)", MotionFamily.MULTI_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("cable_fly_low", "케이블 플라이(로우)", MotionFamily.MULTI_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
@@ -150,7 +157,7 @@ object ExerciseMotionCatalog {
         binding("hex_press", "헥스 프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("landmine_press", "랜드마인 프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("guillotine_press", "길로틴 프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("single_arm_dumbbell_bench_press", "원암 덤벨 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("single_arm_dumbbell_bench_press", "원암 덤벨 벤치프레스", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("single_arm_cable_fly", "원암 케이블 플라이", MotionFamily.MULTI_AXIS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
 
         // 등 — approved 2026-10-19 catalog
@@ -217,9 +224,8 @@ object ExerciseMotionCatalog {
         binding("cross_body_hammer_curl", "크로스바디 해머 컬", MotionFamily.FLEXION_EXTENSION, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
 
         // 삼두 — approved 2026-10-19 catalog
-        binding("rope_pushdown", "로프 푸쉬다운", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("reverse_grip_pushdown", "리버스그립 푸쉬다운", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
-        binding("single_arm_cable_pushdown", "원암 케이블 푸쉬다운", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("reverse_grip_pushdown", "케이블 리버스그립 푸시다운", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
+        binding("single_arm_cable_pushdown", "원암 케이블 푸시다운", MotionFamily.TRANSLATION_PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("skullcrusher_barbell", "스컬크러셔(바벨)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("skullcrusher_dumbbell", "스컬크러셔(덤벨)", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
         binding("close_grip_bench_press", "클로즈그립 벤치프레스", MotionFamily.PRESS_RETURN, CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS),
@@ -309,6 +315,7 @@ object ExerciseMotionCatalog {
         "cable_external_rot" to "external_rotation",
         "dumbbell_biceps_curl" to "dumbbell_curl",
         "dumbbell_row" to "one_arm_dumbbell_row",
+        "rope_pushdown" to "rope_extension",
     )
 
     fun normalizeExerciseId(exerciseId: String): String {

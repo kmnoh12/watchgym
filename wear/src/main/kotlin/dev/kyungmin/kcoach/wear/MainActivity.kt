@@ -89,6 +89,7 @@ class MainActivity : Activity() {
     private var lastWorkingReps = 0
     private var lastWorkingWeight: Double? = null
     private var wasResting = false
+    private var phoneCheckDialog: AlertDialog? = null
     /** 0 while the rest runs, 1 when it is paused; animated over 340 ms when the pause state changes (design 4-1). */
     private var restMorphTarget = 0f
     private var restMorphAnimator: android.animation.ValueAnimator? = null
@@ -657,7 +658,14 @@ class MainActivity : Activity() {
             if (manualRequired && count == null) face.hint.text = "위로 · 횟수 기록"
             if (running && runtimePhase in setOf("POSITIONING", "PREPARING", "BASELINE", "START_DIRECTION_WAITING")) {
                 face.value.text = "준비"; face.size(face.value, 40f)
+                face.value.setTextColor(WatchWorkoutFace.SAGE)
                 face.hint.text = if (runtimePhase == "START_DIRECTION_WAITING") "손목 방향을 맞춰 주세요 · 눌러서 직접 시작" else "손목을 잠시 멈춰 주세요"
+            } else if (!resting && runtimePhase == "READY") {
+                // Between rest completion and the next SET the previous set's count is still in memory.
+                // Never paint it as the next set's live count.
+                face.value.text = "준비"; face.size(face.value, 40f)
+                face.value.setTextColor(WatchWorkoutFace.SAGE)
+                face.hint.text = "다음 세트를 준비해 주세요"
             }
             if (resting) {
                 val left = RestCountdownCalculator.calculate(now, restEnd(now), restSeconds).remainingSeconds
@@ -692,6 +700,7 @@ class MainActivity : Activity() {
             if (homeStore.overview() == null) face.hint.text = "폰에서 기록을 확인하세요"
             face.heart.show(0)
         }
+        updatePhoneCheckDialog()
         // One status line under the numbers, most urgent first; every message here used to be its own control.
         val unresolved = manualOutbox.unresolved()
         val updateWaiting = otaCoordinator.store.local()?.phase == dev.kyungmin.kcoach.updates.OtaPhase.USER_ACTION_REQUIRED
@@ -781,6 +790,27 @@ class MainActivity : Activity() {
     private var lastCountShown = ""
 
     /** The old number slides up and out while the new one rises in from below, quickly and without any bounce. */
+    private fun updatePhoneCheckDialog() {
+        val wanted = running && runtimePhase == "PHONE_CHECK"
+        if (!wanted) {
+            phoneCheckDialog?.takeIf { it.isShowing }?.dismiss()
+            phoneCheckDialog = null
+            return
+        }
+        if (phoneCheckDialog?.isShowing == true) return
+        phoneCheckDialog = AlertDialog.Builder(this)
+            .setTitle("아직 휴식 중인가요?")
+            .setMessage("폰을 보고 있으면 시작하지 않아요.")
+            .setPositiveButton("운동 시작") { _, _ -> sendPhoneCheck("PHONE_CHECK_START") }
+            .setNegativeButton("휴식") { _, _ -> sendPhoneCheck("PHONE_CHECK_REST") }
+            .setOnCancelListener { sendPhoneCheck("PHONE_CHECK_REST") }
+            .show()
+    }
+
+    private fun sendPhoneCheck(command: String) {
+        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command))
+    }
+
     private fun rollCountIfChanged(measuring: Boolean) {
         val shown = face.value.text.toString()
         if (!measuring || shown.firstOrNull()?.isDigit() != true) { lastCountShown = ""; return }

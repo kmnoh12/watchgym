@@ -282,11 +282,14 @@ class SessionStore(private val context: Context) {
     }
 
     fun clearActive(expectedSessionId: String? = null): Boolean = synchronized(lock) {
+        val current = runCatching { read() }.getOrNull()
         if (expectedSessionId != null) {
-            if (read()?.sessionId != expectedSessionId) return@synchronized false
+            if (current?.sessionId != expectedSessionId) return@synchronized false
         } else if (observedRevision != prefs.getLong(KEY_REVISION, 0)) return@synchronized false
         val revision = prefs.getLong(KEY_REVISION, 0) + 1
-        val session = prefs.getString(KEY_ACTIVE_SNAPSHOT, null)?.let(WorkoutSnapshotCodec::decode)?.sessionId
+        val session = runCatching {
+            prefs.getString(KEY_ACTIVE_SNAPSHOT, null)?.let(WorkoutSnapshotCodec::decode)?.sessionId
+        }.getOrNull()
         val edit = prefs.edit().remove(KEY_ACTIVE_SNAPSHOT).putLong(KEY_REVISION, revision)
         if (session != null) edit.putString(KEY_CLOSED_SESSIONS, closedList(session))
         edit.remove(KEY_PREPARED).remove(KEY_MANUAL_REVISIONS)

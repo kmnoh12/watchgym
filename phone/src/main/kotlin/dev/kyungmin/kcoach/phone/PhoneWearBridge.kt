@@ -71,17 +71,22 @@ class PhoneWearBridge(private val context: Context) {
 
     fun sendComplete(sessionId: String) = sendLifecycle("COMPLETE", sessionId)
 
-    fun sendHeartbeat() {
-        sendPath(WearSync.PATH_HEARTBEAT, WearSync.heartbeat("phone"))
+    fun sendHeartbeat(phoneViewing: Boolean = false) {
+        sendPath(WearSync.PATH_HEARTBEAT, WearSync.heartbeat("phone", phoneViewing))
         retryPendingCommand()
     }
 
     fun retryPendingCommand() {
-        recordOutbox.pending()?.let { dispatch(WearSync.PATH_SET_RECORD, it) }
-        commandOutbox.pendingForDelivery()?.let { dispatch(WearSync.PATH_COMMAND, it) }
-        PatternTransferOutbox(context).pending().onSuccess { commands -> commands.forEach {
-            dispatch(WearSync.PATH_PATTERN_PROFILE, it.encode())
-        } }.onFailure { Log.w("KCoachEvent", "profile transfers retained until recovery", it) }
+        runCatching { recordOutbox.pending()?.let { dispatch(WearSync.PATH_SET_RECORD, it) } }
+            .onFailure { Log.w("KCoachEvent", "record retry retained", it) }
+        runCatching { commandOutbox.pendingForDelivery()?.let { dispatch(WearSync.PATH_COMMAND, it) } }
+            .onFailure { Log.w("KCoachEvent", "command retry retained", it) }
+        PatternTransferOutbox(context).pending().onSuccess { commands ->
+            commands.forEach { command ->
+                runCatching { dispatch(WearSync.PATH_PATTERN_PROFILE, command.encode()) }
+                    .onFailure { Log.w("KCoachEvent", "profile transfer retained", it) }
+            }
+        }.onFailure { Log.w("KCoachEvent", "profile transfers retained until recovery", it) }
     }
 
     fun hasPendingDelivery(): Boolean = synchronized(queueLock) { draining || pendingMessages.isNotEmpty() }
@@ -105,17 +110,27 @@ class PhoneWearBridge(private val context: Context) {
 
     private fun sendPath(path: String, payload: String) {
         if (path == WearSync.PATH_SET_RECORD) {
-            recordOutbox.enqueue(payload)?.let { dispatch(path, it) }
+            runCatching { recordOutbox.enqueue(payload)?.let { dispatch(path, it) } }
+                .onFailure {
+                    Log.w("KCoachEvent", "record announcement retained; state unchanged", it)
+                    PhoneWorkoutService.notifyCommandRejected(context, "OUTBOX")
+                }
             return
         }
-        val durable = if (path == WearSync.PATH_COMMAND) commandOutbox.enqueue(WorkoutWearingStore(context).bind(payload).getOrThrow()) else payload
+        if (path != WearSync.PATH_COMMAND) { dispatch(path, payload); return }
+        val durable = runCatching {
+            commandOutbox.enqueue(WorkoutWearingStore(context).bind(payload).getOrThrow())
+        }.getOrElse {
+            Log.w("KCoachEvent", "watch command was not frozen; state retained", it)
+            PhoneWorkoutService.notifyCommandRejected(context, "BINDING")
+            return
+        }
         dispatch(path, durable)
     }
 
     private fun dispatch(path: String, payload: String) {
-        synchronized(queueLock) {
-            if (closed) return
-            val key = when {
+        val key = runCatching {
+            when {
                 path == WearSync.PATH_COMMAND && WearSync.parse(payload).getOrNull(1) == "QUERY" -> "$path:query"
                 path == WearSync.PATH_PATTERN_PROFILE -> {
                     val profile = dev.kyungmin.kcoach.core.PatternProfileCommand.decode(payload)
@@ -124,6 +139,12 @@ class PhoneWearBridge(private val context: Context) {
                 }
                 else -> path
             }
+        }.getOrElse {
+            Log.w("KCoachEvent", "outbound message rejected before queueing path=$path", it)
+            return
+        }
+        synchronized(queueLock) {
+            if (closed) return
             pendingMessages[key] = path to payload
             if (draining) return
             draining = true
@@ -143,10 +164,16 @@ class PhoneWearBridge(private val context: Context) {
                 entry.value
             }
             val path = message.first
-            val payload = if (path == WearSync.PATH_COMMAND && WearSync.parse(message.second).getOrNull(1) != "QUERY") {
+            val commandType = runCatching { WearSync.parse(message.second).getOrNull(1) }.getOrNull()
+            val payload = if (path == WearSync.PATH_COMMAND && commandType != "QUERY") {
                 commandOutbox.pendingForDelivery() ?: continue
             } else if (path == WearSync.PATH_PATTERN_PROFILE) {
-                val requested = dev.kyungmin.kcoach.core.PatternProfileCommand.decode(message.second)
+                val decoded = runCatching { dev.kyungmin.kcoach.core.PatternProfileCommand.decode(message.second) }
+                if (decoded.isFailure) {
+                    Log.w("KCoachEvent", "stored profile transfer retained", decoded.exceptionOrNull())
+                    continue
+                }
+                val requested = decoded.getOrThrow()
                 val current = PatternTransferOutbox(context).pending().getOrNull()
                     ?.singleOrNull { it.commandId == requested.commandId } ?: continue
                 if (current != requested) continue

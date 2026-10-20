@@ -40,6 +40,38 @@ class WatchWorkoutUiTest {
         assertFalse(texts(controller.get().window.decorView).any { it.text.contains("스마트폰 연결 대기") })
         controller.pause().stop().destroy()
     }
+    @Test fun phoneSuspicionShowsTheRestOrStartChoice() {
+        val app = RuntimeEnvironment.getApplication()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        app.sendBroadcast(Intent(WearWorkoutService.ACTION_STATE).setPackage(app.packageName)
+            .putExtra("session", "session").putExtra("setId", "set-2").putExtra("attemptId", "attempt-2")
+            .putExtra("exerciseId", "dumbbell_curl").putExtra("exerciseName", "덤벨 컬")
+            .putExtra("running", true).putExtra("resting", false).putExtra("phase", "PHONE_CHECK")
+            .putExtra("reps", 0).putExtra("targetReps", 10))
+        shadowOf(Looper.getMainLooper()).idle()
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        assertNotNull(dialog)
+        assertEquals("아직 휴식 중인가요?", shadowOf(dialog!!).title)
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun previousCountIsNotShownBetweenRestCompletionAndTheNextSet() {
+        val app = RuntimeEnvironment.getApplication()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        app.sendBroadcast(Intent(WearWorkoutService.ACTION_STATE).setPackage(app.packageName)
+            .putExtra("session", "session").putExtra("setId", "set-2").putExtra("attemptId", "attempt-2")
+            .putExtra("exerciseId", "dumbbell_curl").putExtra("exerciseName", "덤벨 컬")
+            .putExtra("running", false).putExtra("resting", false).putExtra("phase", "READY")
+            .putExtra("reps", 12).putExtra("targetReps", 10))
+        shadowOf(Looper.getMainLooper()).idle()
+        val values = texts(activity.window.decorView).map { it.text.toString() }
+        assertFalse("The finished set's 12 must not appear as the next set's count", values.contains("12"))
+        assertTrue(values.contains("준비"))
+        controller.pause().stop().destroy()
+    }
+
     @Test fun nextButtonCarriesTheDisplayedNextSetIdentityAndDoesNotInventACompletionCount() {
         val app = RuntimeEnvironment.getApplication()
         WatchWorkoutOutbox(app).receivePhoneHello(listOf("1", "phone", "0", "WORKOUT_CONTROL_V1"))

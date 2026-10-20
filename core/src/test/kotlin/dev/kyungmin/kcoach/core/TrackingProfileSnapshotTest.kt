@@ -14,8 +14,14 @@ class TrackingProfileSnapshotTest {
                 id = "press-return-family-$version")
             assertEquals(old, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(old)))
         }
-        for (id in listOf("cable_pushdown", "flat_bench", "ez_lying_extension")) {
-            assertEquals(MotionFamily.PRESS_RETURN, ExerciseTrackingProfiles.resolve(id).family)
+        assertEquals(MotionFamily.TRANSLATION_PRESS_RETURN, ExerciseTrackingProfiles.resolve("cable_pushdown").family)
+        assertEquals(MotionFamily.TRANSLATION_PRESS_RETURN, ExerciseTrackingProfiles.resolve("flat_bench").family)
+        assertEquals(MotionFamily.FLEXION_EXTENSION, ExerciseTrackingProfiles.resolve("ez_lying_extension").family)
+        for (id in listOf("flat_bench", "cable_pushdown", "ez_lying_extension")) {
+            val current = ExerciseTrackingProfiles.resolve(id)
+            val old = current.copy(family = MotionFamily.PRESS_RETURN, signal = TrackingSignal.COMBINED_MOTION,
+                id = MotionFamily.PRESS_RETURN.sharedAlgorithmId)
+            assertEquals(old, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(old)), id)
         }
         val other = ExerciseTrackingProfiles.resolve("flat_bench")
         assertFailsWith<IllegalArgumentException> {

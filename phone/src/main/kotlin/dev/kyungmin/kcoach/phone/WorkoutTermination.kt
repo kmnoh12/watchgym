@@ -10,7 +10,12 @@ internal class WorkoutTermination(private val context: Context) {
 
     fun consumeHomeReset(): Boolean {
         val reset = prefs.getBoolean("homeReset", false)
-        if (reset) check(prefs.edit().remove("homeReset").commit())
+        if (reset) {
+            // A failed cleanup must not kill the launch; the flag remains for the next attempt.
+            if (!prefs.edit().remove("homeReset").commit()) {
+                android.util.Log.w("KCoachEvent", "home reset flag retained; storage write deferred")
+            }
+        }
         return reset
     }
 

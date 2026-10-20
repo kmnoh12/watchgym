@@ -23,8 +23,8 @@ class WorkoutDataTest {
                 "바벨 플랫 벤치 프레스",
                 "바벨 인클라인 벤치 프레스",
                 "머신 플라이",
-                "케이블 트라이셉스 푸시 다운",
-                "케이블 오버헤드 트라이셉 익스텐션",
+                "케이블 스트레이트바 트라이셉 푸시다운",
+                "케이블 스트레이트바 오버헤드 트라이셉 익스텐션",
             ),
             routines.getValue("chest_triceps").exercises.map { it.exercise.name },
         )

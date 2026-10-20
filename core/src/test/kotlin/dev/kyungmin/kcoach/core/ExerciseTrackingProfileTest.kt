@@ -45,7 +45,7 @@ class ExerciseTrackingProfileTest {
         val incline = ExerciseTrackingProfiles.resolve("incline_bench", "바벨 인클라인 벤치 프레스")
         val future = ExerciseTrackingProfiles.resolve("dumbbell_bench", "덤벨 벤치 프레스")
 
-        assertEquals(MotionFamily.PRESS_RETURN, future.family)
+        assertEquals(MotionFamily.TRANSLATION_PRESS_RETURN, future.family)
         assertEquals(TrackingMode.WRIST_IMU_CAUTION, future.mode)
         assertEquals(CapabilityTier.B_AUTO_COUNT_LIMITED_METRICS, future.capabilityTier)
         assertEquals(flat.detectorFingerprint(), incline.detectorFingerprint())

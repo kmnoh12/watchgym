@@ -98,3 +98,35 @@ class WorkoutSessionReducerTest {
         assertEquals(null, WorkoutSessionReducer.advanceAfterRest(pausedRest.copy(pausedRestRemainingMs = 0L), 25_000L, skip = true))
     }
 }
+
+class ManualRepEditPrecedenceTest {
+    private fun completed(reps: Int, source: SetRepSource): WorkoutSnapshot {
+        val base = WorkoutSnapshot(
+            sessionId = "s", routineId = "r", exerciseIndex = 0, setIndex = 0,
+            plannedSets = listOf(PlannedSetSnapshot(0, "flat_bench", 0, 10, 60.0, false)),
+            performedReps = mapOf("flat_bench" to reps), phase = WorkoutPhase.RESTING, restEndAtMs = 1L,
+            pausedRestRemainingMs = 0L, paused = false, startedAtMs = 1L, pausedSinceMs = 0L,
+            totalPausedMs = 0L, lastSequence = 1L, lastCompletedSetKey = "s:flat_bench:0:",
+            captureStates = emptyMap(),
+        )
+        return base.copy(plannedSets = base.plannedSets.map {
+            it.copy(performedReps = reps, repSource = source, completed = true)
+        })
+    }
+
+    @Test
+    fun aLatePhoneReanalysisMayReplaceAWatchEstimateButNeverAnExplicitManualCount() {
+        val watch = completed(5, SetRepSource.WATCH)
+        val replaced = WorkoutSessionReducer.confirmReps(watch, "flat_bench", 0, 4)
+        org.junit.jupiter.api.Assertions.assertEquals(4, replaced.plannedSets.first().performedReps)
+        org.junit.jupiter.api.Assertions.assertEquals(SetRepSource.PHONE_ANALYSIS, replaced.plannedSets.first().repSource)
+
+        val corrected = watch.copy(plannedSets = watch.plannedSets.map {
+            it.copy(performedReps = 12, repSource = SetRepSource.MANUAL)
+        }, performedReps = mapOf("flat_bench" to 12))
+        val kept = WorkoutSessionReducer.confirmReps(corrected, "flat_bench", 0, 3)
+        org.junit.jupiter.api.Assertions.assertEquals(12, kept.plannedSets.first().performedReps)
+        org.junit.jupiter.api.Assertions.assertEquals(SetRepSource.MANUAL, kept.plannedSets.first().repSource)
+        org.junit.jupiter.api.Assertions.assertEquals(12, kept.performedReps["flat_bench"])
+    }
+}

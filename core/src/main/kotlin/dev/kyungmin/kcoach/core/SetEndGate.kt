@@ -10,14 +10,20 @@ class SetEndGate(private val silenceNs: Long = 3_000_000_000L) {
         lastRepNs = nowNs
         return true
     }
-    /** A qualified departure begun before the deadline gets one bounded chance to return. */
+    /**
+     * A qualified departure begun before the deadline gets one bounded chance to return.
+     * [lastMotionNs] is the latest sample that still looked like working motion even when the
+     * detector rejected the repetition. A slow grind that the counter misses therefore keeps
+     * the set open; complete stillness still ends it after the same wait.
+     */
     fun shouldEnd(nowNs: Long, candidateStartNs: Long?, maximumRepNs: Long,
-        minimumWaitNs: Long = silenceNs): Boolean {
+        minimumWaitNs: Long = silenceNs, lastMotionNs: Long? = null): Boolean {
         if (closed) return true
         val last = lastRepNs ?: return false
-        val deadline = last + maxOf(silenceNs, minimumWaitNs)
+        val anchor = maxOf(last, lastMotionNs ?: 0L)
+        val deadline = anchor + maxOf(silenceNs, minimumWaitNs)
         if (nowNs < deadline) return false
-        if (candidateStartNs != null && candidateStartNs > last && candidateStartNs < deadline &&
+        if (candidateStartNs != null && candidateStartNs > anchor && candidateStartNs < deadline &&
             nowNs - candidateStartNs < maximumRepNs) return false
         closed = true
         return true

@@ -97,12 +97,18 @@ internal class FinishedWorkoutStore(private val context: Context) {
     }
 
     fun recordHits(sessionId: String): List<Pair<String, RecordHit>> = synchronized(lock) {
-        val record = prefs.getString("session:$sessionId", null)?.let(::JSONObject) ?: return@synchronized emptyList()
-        val snapshot = WorkoutSnapshotCodec.decode(record.getString("snapshot"))
-        val history = historyForRecords()
-        ProgressionPlanStore(context).logs(snapshot, record.getLong("epochDay")).flatMap { log ->
-            val name = snapshot.plannedSets.first { it.exerciseIndex == log.exerciseIndex }.exerciseName.ifBlank { log.exerciseId }
-            PersonalRecords.detect(history, log).map { name to it }
+        runCatching {
+            val record = prefs.getString("session:$sessionId", null)?.let(::JSONObject) ?: return@synchronized emptyList()
+            val snapshot = WorkoutSnapshotCodec.decode(record.getString("snapshot"))
+            val history = historyForRecords()
+            ProgressionPlanStore(context).logs(snapshot, record.getLong("epochDay")).flatMap { log ->
+                val name = snapshot.plannedSets.firstOrNull { it.exerciseIndex == log.exerciseIndex }?.exerciseName?.ifBlank { log.exerciseId }
+                    ?: return@flatMap emptyList()
+                PersonalRecords.detect(history, log).map { name to it }
+            }
+        }.getOrElse {
+            android.util.Log.e("KCoachEvent", "finished record hits unreadable session=$sessionId", it)
+            emptyList()
         }
     }
 
@@ -118,7 +124,12 @@ internal class FinishedWorkoutStore(private val context: Context) {
     }
 
     fun usePounds(sessionId: String): Boolean = synchronized(lock) {
-        prefs.getString("session:$sessionId", null)?.let(::JSONObject)?.optBoolean("usePounds") ?: false
+        runCatching {
+            prefs.getString("session:$sessionId", null)?.let(::JSONObject)?.optBoolean("usePounds") ?: false
+        }.getOrElse {
+            android.util.Log.e("KCoachEvent", "finished unit setting unreadable session=$sessionId", it)
+            false
+        }
     }
 
     private fun applyAnalyses(snapshot: WorkoutSnapshot, analyses: Map<String, SetAnalysisUi>) =

@@ -68,6 +68,22 @@ class SetEndGateTest {
         assertEquals(12, replay(CurlCycleRegressionTest.curlSamples(12, 1.0, 3.0, topHoldSeconds = 2.5)))
     }
 
+    @Test fun rejectedRepetitionsStillKeepTheSetOpenWhileTheWristIsWorking() {
+        val gate = SetEndGate(); gate.rep(ns(1000))
+        // The detector missed every rep in this window, but real motion continued.
+        assertFalse(gate.shouldEnd(ns(9000), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), ns(8500)))
+        assertFalse(gate.shouldEnd(ns(12_000), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), ns(11_500)))
+        // Motion stops at 14 s; the same seven-second pause still ends the set afterwards.
+        assertFalse(gate.shouldEnd(ns(20_900), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), ns(14_000)))
+        assertTrue(gate.shouldEnd(ns(21_000), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), ns(14_000)))
+    }
+
+    @Test fun aStaleMotionTimestampCannotKeepAnAbandonedSetOpen() {
+        val gate = SetEndGate(); gate.rep(ns(1000))
+        assertTrue(gate.shouldEnd(ns(9000), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), ns(1200)))
+        assertTrue(gate.shouldEnd(ns(9000), null, ns(6000), SetEndGate.waitNs(3, 12, ns(3000)), null))
+    }
+
     @Test fun aPauseBeforeTheTargetWaitsSevenSecondsAndAfterItThreeAsBefore() {
         val base = 3_000_000_000L
         assertEquals(7_000_000_000L, SetEndGate.waitNs(reps = 7, targetReps = 20, baseWaitNs = base))

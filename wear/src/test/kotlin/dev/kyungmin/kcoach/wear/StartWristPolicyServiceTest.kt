@@ -59,18 +59,18 @@ class StartWristPolicyServiceTest {
         }
     }
 
-    @Test fun measuringStartsOnlyAfterTwoAndAHalfStillSecondsAndAShakeRestartsTheHold() {
+    @Test fun measuringStartsOnlyAfterOneAndAHalfStillSecondsAndAShakeRestartsTheHold() {
         val controller = Robolectric.buildService(WearWorkoutService::class.java).create()
         try {
             controller.get().onStartCommand(command("START", "barbell_biceps_curl"), 0, 1)
             assertEquals("PREPARING", state().getStringExtra("phase"))
-            repeat(115) { still(controller.get()) }
-            assertEquals("2.3 s of stillness is not enough", "PREPARING", state().getStringExtra("phase"))
+            repeat(65) { still(controller.get()) }
+            assertEquals("1.3 s of stillness is not enough", "PREPARING", state().getStringExtra("phase"))
             still(controller.get(), gyro = 1.5f)
-            repeat(115) { still(controller.get()) }
+            repeat(65) { still(controller.get()) }
             controller.get().onStartCommand(Intent().putExtra("command", "QUERY"), 0, 2)
-            assertEquals("a shake restarts the two and a half seconds", "PREPARING", state().getStringExtra("phase"))
-            repeat(20) { still(controller.get()) }
+            assertEquals("a shake restarts the one and a half seconds", "PREPARING", state().getStringExtra("phase"))
+            repeat(15) { still(controller.get()) }
             controller.get().onStartCommand(Intent().putExtra("command", "QUERY"), 0, 3)
             assertTrue(state().getStringExtra("phase")!!.startsWith("WORKING"))
         } finally { controller.destroy() }

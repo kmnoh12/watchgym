@@ -94,15 +94,17 @@ fun ActiveWorkoutScreen(
     val rest = RestClock.of(model, now)
     val current = model.exercises.getOrNull(model.exerciseIndex)
 
-    val pager = rememberPagerState(initialPage = model.exerciseIndex) { model.exercises.size }
+    val initialPage = model.exerciseIndex.coerceIn(0, model.exercises.lastIndex.coerceAtLeast(0))
+    val pager = rememberPagerState(initialPage = initialPage) { model.exercises.size }
     LaunchedEffect(pager.settledPage) {
         if (pager.settledPage != model.exerciseIndex) {
             editing = null
             actions.onPageSettled(pager.settledPage)
         }
     }
-    LaunchedEffect(model.exerciseIndex) {
-        if (pager.currentPage != model.exerciseIndex && !pager.isScrollInProgress) {
+    LaunchedEffect(model.exerciseIndex, model.exercises.size) {
+        if (model.exerciseIndex in model.exercises.indices &&
+            pager.currentPage != model.exerciseIndex && !pager.isScrollInProgress) {
             pager.animateScrollToPage(model.exerciseIndex, animationSpec = Motion.page())
         }
     }
@@ -146,7 +148,7 @@ fun ActiveWorkoutScreen(
             HorizontalPager(
                 state = pager,
                 beyondViewportPageCount = 1,
-                key = { model.exercises[it].id + it },
+                key = { index -> model.exercises.getOrNull(index)?.let { "${it.id}$index" } ?: "removed-$index" },
                 flingBehavior = PagerDefaults.flingBehavior(pager, snapAnimationSpec = Motion.page()),
                 modifier = Modifier.weight(1f),
             ) { page ->
@@ -168,7 +170,9 @@ fun ActiveWorkoutScreen(
                         }
                     },
                     onNextExercise = {
-                        scope.launch { pager.animateScrollToPage(page + 1, animationSpec = Motion.page()) }
+                        if (page + 1 < model.exercises.size) {
+                            scope.launch { pager.animateScrollToPage(page + 1, animationSpec = Motion.page()) }
+                        }
                     },
                 )
             }
@@ -299,7 +303,7 @@ private fun ExercisePage(
     onRemoveSet: (Int) -> Unit,
     onNextExercise: () -> Unit,
 ) {
-    val exercise = model.exercises[exerciseIndex]
+    val exercise = model.exercises.getOrNull(exerciseIndex) ?: return
     val restingSetIndex = model.restingSet?.takeIf { it.first == exerciseIndex }?.second
     val scroll = rememberScrollState()
     val imageHeight by animateDpAsState(if (keypadOpen) 92.dp else 190.dp, Motion.panel(), label = "image")

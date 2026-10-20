@@ -15,6 +15,15 @@ import dev.kyungmin.kcoach.core.WearSync
 import dev.kyungmin.kcoach.core.WorkoutPhase
 import dev.kyungmin.kcoach.core.WorkoutSessionReducer
 
+/** Testable boundary for Android's background foreground-promotion refusal. */
+internal fun promoteForegroundSafely(start: () -> Unit): Boolean = try {
+    start()
+    true
+} catch (error: RuntimeException) {
+    Log.e("KCoachEvent", "foreground promotion refused; durable work retained", error)
+    false
+}
+
 /**
  * Owns the phone-to-watch liveness loop independently from MainActivity.
  * The UI may disappear while an active workout continues, so heartbeat must
@@ -26,20 +35,30 @@ class PhoneWorkoutService : Service() {
     private var heartbeatTicker: Runnable? = null
     private var restTicker: Runnable? = null
     private val sessionStore by lazy { SessionStore(this) }
+    private val viewingDetector by lazy { PhoneViewingDetector(this) }
     private val sessionController by lazy { PhoneSessionController(sessionStore, wearBridge::sendRaw) }
     private var idleSinceMs = -1L
     private var taskRemoved = false
+    private var foregroundReady = false
 
     override fun onCreate() {
         super.onCreate()
         // Meet the foreground-start deadline before recovery can touch capture files or locks.
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (!promoteToForeground()) {
+            // Background start restrictions can refuse the promotion even after startForegroundService.
+            // Durable commands stay in the outbox; a later foreground start retries them.
+            stopSelf()
+            return
+        }
         CalibrationCaptureStore(this).recoverAfterProcessRestart().onSuccess { previous ->
-            if (previous != null && sessionStore.loadActive().getOrNull() == null)
-                PhoneCommandOutbox(this).enqueue(WearSync.command("STOP", previous.id, "", 0, 0))
+            if (previous != null && sessionStore.loadActive().getOrNull() == null) {
+                runCatching { PhoneCommandOutbox(this).enqueue(WearSync.command("STOP", previous.id, "", 0, 0)) }
+                    .onFailure { Log.w("KCoachEvent", "camera owner STOP retained; enqueue deferred", it) }
+            }
         }.onFailure { Log.w("KCoachEvent", "interrupted camera owner recovery retained", it) }
         wearBridge.sendHello()
+        viewingDetector.start()
         startHeartbeat()
         startRestTicker()
         if (PhoneCommandOutbox(this).pending() == null) {
@@ -50,19 +69,25 @@ class PhoneWorkoutService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // A foreground request can reach this same instance after stopForeground/stopSelf
         // but before onDestroy. onCreate alone cannot acknowledge that new request.
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (!promoteToForeground()) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         idleSinceMs = -1L
         startHeartbeat()
         startRestTicker()
         if (intent?.getStringExtra(EXTRA_ACTION) == ACTION_PING) {
-            wearBridge.sendHeartbeat()
+            wearBridge.sendHeartbeat(viewingDetector.isViewing())
         }
         if (intent?.getStringExtra(EXTRA_ACTION) == ACTION_RETRY) wearBridge.retryPendingCommand()
         val path = intent?.getStringExtra(EXTRA_PATH)
         val payload = intent?.getStringExtra(EXTRA_PAYLOAD)
         if (!path.isNullOrBlank() && payload != null) {
             if (intent.getBooleanExtra(EXTRA_DURABLE_COMMAND, false)) wearBridge.retryPendingCommand()
-            else wearBridge.sendRaw(path, payload)
+            else runCatching { wearBridge.sendRaw(path, payload) }.onFailure {
+                Log.w("KCoachEvent", "foreground command rejected; state retained", it)
+                notifyCommandRejected(this, "BINDING")
+            }
             if (path == WearSync.PATH_COMMAND) startRestTicker()
         }
         return if (!taskRemoved && hasActiveRuntime()) START_STICKY else START_NOT_STICKY
@@ -82,6 +107,7 @@ class PhoneWorkoutService : Service() {
         heartbeatTicker?.let(handler::removeCallbacks)
         restTicker?.let(handler::removeCallbacks)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundReady = false
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
@@ -89,6 +115,7 @@ class PhoneWorkoutService : Service() {
     override fun onTimeout(startId: Int, fgsType: Int) {
         // The persisted session and command outbox remain available for reconnection.
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundReady = false
         stopSelf()
     }
 
@@ -97,6 +124,7 @@ class PhoneWorkoutService : Service() {
         heartbeatTicker = null
         restTicker?.let(handler::removeCallbacks)
         restTicker = null
+        viewingDetector.stop()
         if (taskRemoved) wearBridge.closeAfterPendingDelivery() else wearBridge.close()
         super.onDestroy()
     }
@@ -108,7 +136,7 @@ class PhoneWorkoutService : Service() {
         val tick = object : Runnable {
             override fun run() {
                 if (stopIfIdle(SystemClock.elapsedRealtime())) return
-                if (hasActiveRuntime()) wearBridge.sendHeartbeat() else wearBridge.retryPendingCommand()
+                if (hasActiveRuntime()) wearBridge.sendHeartbeat(viewingDetector.isViewing()) else wearBridge.retryPendingCommand()
                 handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
             }
         }
@@ -150,8 +178,22 @@ class PhoneWorkoutService : Service() {
         heartbeatTicker?.let(handler::removeCallbacks)
         restTicker?.let(handler::removeCallbacks)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundReady = false
         stopSelf()
         return true
+    }
+
+    /**
+     * Android can refuse a foreground promotion after a background start. The service must not
+     * let that exception escape the main looper; durable commands remain in the outbox.
+     */
+    private fun promoteToForeground(): Boolean {
+        if (foregroundReady) return true
+        val promoted = promoteForegroundSafely {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
+        if (promoted) foregroundReady = true
+        return promoted
     }
 
     private fun createNotificationChannel() {
@@ -199,17 +241,51 @@ class PhoneWorkoutService : Service() {
             context.sendBroadcast(Intent(ACTION_SESSION_CHANGED).setPackage(context.packageName))
         }
 
-        fun send(context: android.content.Context, path: String, payload: String) {
-            val durable = path == WearSync.PATH_COMMAND && WearSync.parse(payload).getOrNull(1) != "QUERY"
-            val bound = if (durable) WorkoutWearingStore(context).bind(payload).getOrThrow() else payload
-            if (durable) PhoneCommandOutbox(context).enqueue(bound)
+        /** Returns false when the command could not be frozen or handed to the service; never throws for those cases. */
+        fun send(context: android.content.Context, path: String, payload: String): Boolean {
+            val type = runCatching { WearSync.parse(payload).getOrNull(1) }.getOrNull()
+            if (path == WearSync.PATH_COMMAND && type == null) {
+                Log.w("KCoachEvent", "watch command rejected: invalid payload")
+                notifyCommandRejected(context, "INVALID")
+                return false
+            }
+            val durable = path == WearSync.PATH_COMMAND && type != "QUERY"
+            val bound: String = if (durable) {
+                try {
+                    WorkoutWearingStore(context).bind(payload).getOrThrow()
+                } catch (error: RuntimeException) {
+                    // A set identity frozen to one exercise cannot be reused for a replacement.
+                    Log.w("KCoachEvent", "watch command rejected before it reached the service", error)
+                    notifyCommandRejected(context, "BINDING")
+                    return false
+                }
+            } else payload
+            if (durable) {
+                try {
+                    PhoneCommandOutbox(context).enqueue(bound)
+                } catch (error: RuntimeException) {
+                    Log.w("KCoachEvent", "watch command could not be persisted", error)
+                    notifyCommandRejected(context, "OUTBOX")
+                    return false
+                }
+            }
             val intent = Intent(context, PhoneWorkoutService::class.java).apply {
                 putExtra(EXTRA_PATH, path)
                 putExtra(EXTRA_PAYLOAD, bound)
                 putExtra(EXTRA_DURABLE_COMMAND, durable)
             }
-            runCatching { androidx.core.content.ContextCompat.startForegroundService(context, intent) }
-                .onFailure { Log.w("KCoachEvent", "watch service start deferred; durable commands retained", it) }
+            return runCatching { androidx.core.content.ContextCompat.startForegroundService(context, intent) }
+                .onFailure {
+                    Log.w("KCoachEvent", "watch service start deferred; durable commands retained", it)
+                    notifyCommandRejected(context, "SERVICE_START")
+                }.isSuccess
+        }
+
+        internal fun notifyCommandRejected(context: android.content.Context, reason: String) {
+            runCatching {
+                context.sendBroadcast(Intent(PhoneWearListenerService.ACTION_COMMAND_REJECTED)
+                    .setPackage(context.packageName).putExtra("reason", reason))
+            }.onFailure { Log.w("KCoachEvent", "rejection notice deferred", it) }
         }
     }
 }
