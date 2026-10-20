@@ -113,4 +113,37 @@ class WorkoutEditSafetyTest {
             assertEquals(mapOf("barbell_curl" to 8), field(field(activity, "activeWorkout")!!, "performedRepsByExercise"))
         } finally { controller.destroy() }
     }
+    @Test fun activeAddRemoveAndUndoRenderTheCommittedPlan() {
+        seed()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create()
+        val activity = controller.get()
+        try {
+            actions(activity).onAddSet(0)
+            val added = SessionStore(app).loadActive().getOrThrow()!!
+            assertEquals(2, routine(activity).exercises[0].sets.size)
+            assertEquals(added.plannedSets.map { it.setId }, routine(activity).exercises[0].sets.map { it.setId })
+            actions(activity).onRemoveSet(0, 0)
+            assertEquals(1, routine(activity).exercises[0].sets.size)
+            actions(activity).onUndoRemoveSet()
+            assertEquals(added.plannedSets, SessionStore(app).loadActive().getOrThrow()!!.plannedSets)
+            assertEquals(added.plannedSets.map { it.setId }, routine(activity).exercises[0].sets.map { it.setId })
+        } finally { controller.destroy() }
+    }
+
+    @Test fun failedActiveRemoveKeepsUiAndDoesNotOfferAnUndo() {
+        seed()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create()
+        val activity = controller.get()
+        try {
+            actions(activity).onAddSet(0)
+            val before = routine(activity).exercises[0].sets.map { it.copy() }
+            app.getSharedPreferences("calibration-captures", 0).edit().putString("active", "busy").commit()
+            actions(activity).onRemoveSet(0, 0)
+            assertEquals(before, routine(activity).exercises[0].sets)
+            assertTrue(ShadowToast.getTextOfLatestToast().contains("되돌렸어요"))
+            actions(activity).onUndoRemoveSet()
+            assertEquals(before, routine(activity).exercises[0].sets)
+        } finally { controller.destroy() }
+    }
+
 }

@@ -227,6 +227,7 @@ class MainActivity : ComponentActivity() {
     private var workoutComposeView: ComposeView? = null
     private var workoutComposeWorkout: ActiveWorkout? = null
     private val workoutVersion = mutableIntStateOf(0)
+    private var removedPlanSet: Pair<String, PlannedSetSnapshot>? = null
     private var lastRemovedSet: Triple<RoutineExercise, Int, PlannedSet>? = null
     private var lastRestCueSecond = -1
     private val restTone by lazy { android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 80) }
@@ -1847,6 +1848,33 @@ class MainActivity : ComponentActivity() {
         bumpWorkoutUi()
     }
 
+    /** Active plan intents return durable snapshots; preview/library editing remains separate. */
+    private fun editActivePlan(workout: ActiveWorkout, edit: PhonePlanEdit): Boolean {
+        val result = PhoneSessionController(sessionStore) { path, payload ->
+            PhoneWorkoutService.send(this, path, payload)
+        }.editPlan({ workoutSnapshot(workout) }, edit)
+        val applied = result.getOrElse {
+            Toast.makeText(this, "변경을 저장하지 못했어요. 이전 상태로 되돌렸어요", Toast.LENGTH_SHORT).show()
+            activeLiveStatus?.apply {
+                text = "세션 저장에 실패했어요 · 변경 전 상태를 유지해요"
+                setTextColor(amber)
+            }
+            return false
+        }
+        finishWorkoutEdit(workout, true)
+        val restStartedAt = activeRestStartAtMs
+        applySnapshotToWorkout(workout, applied.snapshot)
+        // Preserve the running rest's progress origin when changing a future preset.
+        activeRestStartAtMs = restStartedAt
+        workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(
+            workout.routine.exercises.getOrNull(workout.exerciseIndex)?.sets?.lastIndex?.coerceAtLeast(0) ?: 0)
+        if (applied.syncFailure != null) {
+            Toast.makeText(this, "변경은 저장했지만 워치 동기화에 실패했어요", Toast.LENGTH_SHORT).show()
+        }
+        bumpWorkoutUi()
+        return true
+    }
+
     private val workoutActions = object : WorkoutActions {
         private fun workout() = activeWorkout ?: previewWorkout
         private fun exercise(index: Int) = workout()?.routine?.exercises?.getOrNull(index)
@@ -1976,6 +2004,10 @@ class MainActivity : ComponentActivity() {
         override fun onAddSet(exerciseIndex: Int) {
             val routineExercise = exercise(exerciseIndex) ?: return
             val workout = workout() ?: return
+            if (activeWorkout === workout) {
+                editActivePlan(workout, PhonePlanEdit.AddSet(exerciseIndex))
+                return
+            }
             beginWorkoutEdit(workout)
             val source = routineExercise.sets.lastOrNull() ?: PlannedSet(null, 10)
             routineExercise.sets += PlannedSet(source.weightKg, source.targetReps, gripType = source.gripType, restSeconds = source.restSeconds)
@@ -1988,6 +2020,20 @@ class MainActivity : ComponentActivity() {
             val workout = workout() ?: return
             val routineExercise = exercise(exerciseIndex) ?: return
             if (routineExercise.sets.size <= 1 || setIndex !in routineExercise.sets.indices) return
+            if (activeWorkout === workout) {
+                val removed = runCatching { workoutSnapshot(workout).plannedSets.single {
+                    it.exerciseIndex == exerciseIndex && it.setIndex == setIndex
+                } }.getOrElse {
+                    Log.e(EVENT_TAG, "remove set snapshot failed", it)
+                    Toast.makeText(this@MainActivity, "세트 구성을 읽지 못해 삭제하지 않았어요", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (editActivePlan(workout, PhonePlanEdit.RemoveSet(exerciseIndex, setIndex))) {
+                    removedPlanSet = workout.sessionId to removed
+                    lastRemovedSet = null
+                }
+                return
+            }
             val measuring = routineExercise.sets.getOrNull(workout.setIndex)
             val removed = routineExercise.sets.removeAt(setIndex)
             lastRemovedSet = Triple(routineExercise, setIndex, removed)
@@ -2001,6 +2047,12 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onUndoRemoveSet() {
+            val active = activeWorkout
+            val removed = removedPlanSet
+            if (active != null && removed?.first == active.sessionId) {
+                if (editActivePlan(active, PhonePlanEdit.RestoreSet(removed.second))) removedPlanSet = null
+                return
+            }
             val (routineExercise, index, set) = lastRemovedSet ?: return
             lastRemovedSet = null
             val workout = workout() ?: return
@@ -2023,8 +2075,14 @@ class MainActivity : ComponentActivity() {
                 items = listOf("기본값" to "운동 기본 휴식 ${routineExercise.restSeconds}초") +
                     listOf(30, 45, 60, 90, 120, 150, 180).map { "${it}초" to "" },
             ) { value ->
-                set.restSeconds = value.removeSuffix("초").toIntOrNull()
-                workout()?.let(::persistActiveWorkout)
+                val workout = workout() ?: return@showChoiceSheet
+                val seconds = value.removeSuffix("초").toIntOrNull()
+                if (activeWorkout === workout) {
+                    editActivePlan(workout, PhonePlanEdit.SetRest(exerciseIndex, setIndex, seconds))
+                    return@showChoiceSheet
+                }
+                set.restSeconds = seconds
+                persistActiveWorkout(workout)
                 bumpWorkoutUi()
             }
         }
@@ -2309,8 +2367,16 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Clock, "휴식 시간", featured = true, value = "${routineExercise.restSeconds}초") {
                         showChoiceSheet("휴식 시간", selected = "${routineExercise.restSeconds}초", items = listOf("30초" to "짧은 휴식", "60초" to "일반 휴식", "90초" to "근비대 기본", "120초" to "고중량 휴식", "160초" to "긴 휴식")) { value ->
-                            routineExercise.restSeconds = value.removeSuffix("초").toInt()
-                            saveWorkoutChanges(workout)
+                            val seconds = value.removeSuffix("초").toInt()
+                            if (activeWorkout === workout) {
+                                if (editActivePlan(workout, PhonePlanEdit.ExerciseRest(pageIndex, seconds))) {
+                                    if (routines.any { it === workout.routine }) saveRoutineLibrary()
+                                    showActiveWorkout()
+                                }
+                            } else {
+                                routineExercise.restSeconds = seconds
+                                saveWorkoutChanges(workout)
+                            }
                         }
                     },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) {
