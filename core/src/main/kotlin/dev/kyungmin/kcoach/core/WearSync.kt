@@ -23,6 +23,8 @@ object WearSync {
     const val PATH_WORKOUT_CONTROL_ACK = "/kcoach/workout-control/ack"
     const val PATH_CALIBRATION_CAMERA_STATE = "/kcoach/calibration/camera-state"
     const val PATH_CLOCK_REQUEST = "/kcoach/clock/request"
+    /** Watch crash reports handed to the phone on the next launch, so one export covers both devices. */
+    const val PATH_DIAGNOSTICS = "/kcoach/diagnostics"
     const val PATH_CLOCK_REPLY = "/kcoach/clock/reply"
     const val PATH_SET_ACK = "/kcoach/set/ack"
     const val PATH_RECONNECT = "/kcoach/reconnect"

@@ -9,6 +9,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
+import org.json.JSONArray
 import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
@@ -35,6 +36,24 @@ class LocalExitDiagnosticsTest {
         assertTrue(metadata.getBoolean("hasExceptionReport"))
         assertFalse(entries.values.any { it.contains("PRIVATE") })
         assertEquals("RESTING", JSONObject(entries.getValue("last-exception.json")).getString("phase"))
+    }
+
+    @Test fun watchCrashReportArrivesInTheSameExport() {
+        val app = RuntimeEnvironment.getApplication()
+        val watch = JSONObject().put("atMs", 1L).put("appVersion", "0.2.12")
+            .put("reports", JSONObject()
+                .put("last-exception.json", JSONObject().put("causes", JSONArray().put(JSONObject()
+                    .put("type", "java.lang.IllegalStateException"))).toString())
+                .put("system-exits.json", JSONObject().put("exits", JSONArray()).toString()))
+        LocalExitDiagnostics.storeWatchReports(watch.toString())
+        assertTrue("watch-last-exception.json" in LocalExitDiagnostics.readReports().getOrThrow())
+        val bytes = ByteArrayOutputStream().also { DiagnosticsExport.write(app, it) }.toByteArray()
+        val names = linkedSetOf<String>()
+        ZipInputStream(bytes.inputStream()).use { zip ->
+            while (true) { val entry = zip.nextEntry ?: break; names += entry.name }
+        }
+        assertTrue(names.contains("watch-last-exception.json"))
+        assertTrue(names.contains("watch-system-exits.json"))
     }
 
     @Test fun localExceptionHasCodeFramesAndStateButNoPrivateMessages() {

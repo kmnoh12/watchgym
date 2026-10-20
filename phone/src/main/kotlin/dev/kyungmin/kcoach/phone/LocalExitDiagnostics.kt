@@ -13,6 +13,7 @@ import java.io.File
 
 /** Private, bounded, excluded from backup; no throwable messages, intent extras or workout facts. */
 internal object LocalExitDiagnostics {
+    private const val MAX_REPORT_BYTES = 64 * 1024
     @Volatile private var screen = "UNKNOWN"
     @Volatile private var phase = "UNKNOWN"
     private var directory: File? = null
@@ -79,12 +80,32 @@ internal object LocalExitDiagnostics {
         }
     }
 
+    /**
+     * Keeps the watch's last crash report under watch-* so one export carries both devices.
+     * Called from the Wear listener; malformed or oversized payloads are dropped.
+     */
+    @Synchronized fun storeWatchReports(watchPayload: String) {
+        runCatching {
+            val dir = directory ?: return@runCatching
+            val reports = JSONObject(watchPayload).optJSONObject("reports") ?: return@runCatching
+            listOf("last-exception.json", "last-state.json", "system-exits.json").forEach { name ->
+                val text = reports.optString(name).takeIf { it.isNotBlank() } ?: return@forEach
+                if (text.toByteArray().size > MAX_REPORT_BYTES) return@forEach
+                val file = AtomicFile(File(dir, "watch-$name"))
+                val stream = file.startWrite()
+                try { stream.write(text.toByteArray()); file.finishWrite(stream) }
+                catch (error: Throwable) { file.failWrite(stream); throw error }
+            }
+        }
+    }
+
     /** Local UI integration point. Does not upload, delete, or alter the reports. Call off the main thread. */
     @Synchronized fun readReports(): Result<Map<String, String>> = runCatching {
         val dir = directory ?: return@runCatching emptyMap()
-        listOf("last-exception.json", "last-state.json", "system-exits.json").mapNotNull { name ->
+        listOf("last-exception.json", "last-state.json", "system-exits.json",
+            "watch-last-exception.json", "watch-last-state.json", "watch-system-exits.json").mapNotNull { name ->
             val file = File(dir, name)
-            if (file.exists()) name to AtomicFile(file).readFully().toString(Charsets.UTF_8) else null
+            if (file.exists() && file.length() <= MAX_REPORT_BYTES) name to AtomicFile(file).readFully().toString(Charsets.UTF_8) else null
         }.toMap()
     }
 

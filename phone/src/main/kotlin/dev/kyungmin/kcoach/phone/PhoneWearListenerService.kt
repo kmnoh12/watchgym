@@ -574,6 +574,7 @@ class PhoneWearListenerService : WearableListenerService() {
                     sendBroadcast(Intent(ACTION_PATTERN_PROFILE).setPackage(packageName).putExtra("profileId", ack.profileId)
                         .putExtra("commandId", ack.commandId).putExtra("status", ack.status.name))
             }.onFailure { Log.w(EVENT_TAG, "profile acknowledgement rejected", it) }
+            WearSync.PATH_DIAGNOSTICS -> LocalExitDiagnostics.storeWatchReports(payload)
             WearSync.PATH_CLOCK_REPLY -> runCatching {
                 val reply = WireCodec.decode(payload)
                 CaptureClockStore(this).acceptReply(reply, receivedNs, PhoneClockEpoch.current(this).id).getOrThrow()
