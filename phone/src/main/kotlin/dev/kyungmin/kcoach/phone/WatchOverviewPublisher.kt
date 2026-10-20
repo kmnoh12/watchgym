@@ -18,9 +18,16 @@ internal object WatchOverviewPublisher {
     fun publish(context: Context) {
         val app = context.applicationContext
         worker.execute {
-            runCatching { PhoneWorkoutService.send(app, PATH, snapshot(app).toString()) }
+            runCatching { publishNow(app) }
                 .onFailure { Log.w("KCoachEvent", "watch history overview retained for next refresh", it) }
         }
+    }
+
+    internal fun publishNow(context: Context) {
+        // Idle display data gets one bounded outbound drain, without a foreground-service start obligation.
+        val bridge = PhoneWearBridge(context)
+        try { bridge.sendRaw(PATH, snapshot(context).toString()) }
+        finally { bridge.closeAfterPendingDelivery() }
     }
 
     internal fun snapshot(context: Context, nowMs: Long = System.currentTimeMillis(), zone: ZoneId = ZoneId.systemDefault()): JSONObject {

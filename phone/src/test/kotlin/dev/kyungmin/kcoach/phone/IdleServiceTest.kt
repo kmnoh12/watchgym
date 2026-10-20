@@ -16,6 +16,7 @@ class IdleServiceTest {
         val app = org.robolectric.RuntimeEnvironment.getApplication()
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
         val service = controller.get()
+        service.onStartCommand(null, 0, 1)
         shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
         assertTrue(shadowOf(service).isForegroundStopped)
         // Android can deliver a new foreground-start request to this instance before destruction.
@@ -44,6 +45,7 @@ class IdleServiceTest {
     @Test fun idlePhoneServiceStopsItsForegroundLoop() {
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
         val service = controller.get()
+        service.onStartCommand(null, 0, 1)
         shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
         assertTrue("No active workout must not keep a foreground service alive", shadowOf(service).isStoppedBySelf)
         controller.destroy()
@@ -53,6 +55,44 @@ class IdleServiceTest {
         PhoneWorkoutService.send(app, dev.kyungmin.kcoach.core.WearSync.PATH_COMMAND,
             dev.kyungmin.kcoach.core.WearSync.command("STOP", "ended", "", 0, 0))
         assertNotNull("An interrupted or rejected service start must not lose STOP", PhoneCommandOutbox(app).pending())
+    }
+
+    @Test fun creationWithoutStartIdCannotStopAQueuedStart() {
+        val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        assertFalse(shadowOf(controller.get()).isStoppedBySelf)
+        controller.get().onStartCommand(null, 0, 7)
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+        assertEquals(7, shadowOf(controller.get()).stopSelfResultId)
+        controller.destroy()
+    }
+
+    @Test fun staleTimeoutDoesNotDemoteANewerStart() {
+        val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        val service = controller.get()
+        service.onStartCommand(null, 0, 1)
+        service.onStartCommand(null, 0, 2)
+        service.onTimeout(1, 0)
+        assertFalse(shadowOf(service).isForegroundStopped)
+        assertFalse(shadowOf(service).isStoppedBySelf)
+        service.onTimeout(2, 0)
+        assertEquals(2, shadowOf(service).stopSelfResultId)
+        assertTrue(shadowOf(service).isForegroundStopped)
+        controller.destroy()
+    }
+
+    @Test fun taskRemovalStopsOnlyTheLastDeliveredStart() {
+        val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        controller.get().onStartCommand(null, 0, 9)
+        controller.get().onTaskRemoved(null)
+        assertEquals(9, shadowOf(controller.get()).stopSelfResultId)
+        controller.destroy()
+    }
+
+    @Test fun idleOverviewDoesNotStartAForegroundService() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        WatchOverviewPublisher.publishNow(app)
+        assertNull(shadowOf(app).nextStartedService)
     }
 
     private fun activeSnapshot() = dev.kyungmin.kcoach.core.WorkoutSnapshot(
@@ -65,6 +105,7 @@ class IdleServiceTest {
         val app = org.robolectric.RuntimeEnvironment.getApplication()
         SessionStore(app).saveActive(activeSnapshot().copy(paused = true, phase = dev.kyungmin.kcoach.core.WorkoutPhase.PAUSED))
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        controller.get().onStartCommand(null, 0, 1)
         shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
         assertFalse(shadowOf(controller.get()).isStoppedBySelf)
         controller.destroy()
@@ -73,6 +114,7 @@ class IdleServiceTest {
         val app = org.robolectric.RuntimeEnvironment.getApplication()
         val pending = PhoneCommandOutbox(app).enqueue(dev.kyungmin.kcoach.core.WearSync.command("COMPLETE", "ended", "", 0, 0))
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        controller.get().onStartCommand(null, 0, 1)
         shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
         assertEquals(pending, PhoneCommandOutbox(app).pending())
