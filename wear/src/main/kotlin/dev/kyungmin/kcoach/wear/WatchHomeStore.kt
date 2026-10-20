@@ -57,7 +57,13 @@ internal class WatchHomeStore(private val context: Context) {
     }
     fun weekCount(today: LocalDate = LocalDate.now()): Int? = overview()?.takeIf {
         it.optString("weekStartDate") == today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
-    }?.getInt("weekWorkoutCount")
+    }?.let { overview ->
+        val count = overview.opt("weekWorkoutCount")
+        if (count is Int && count in 0..10_000) count else {
+            android.util.Log.w("WatchHomeStore", "Invalid cached week count; showing unavailable")
+            null
+        }
+    }
     companion object {
         const val PATH_OVERVIEW = "/kcoach/watch/overview"
         const val ACTION_OVERVIEW = "dev.kyungmin.kcoach.WATCH_OVERVIEW"

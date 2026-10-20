@@ -13,6 +13,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.Log
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -112,21 +113,24 @@ class MainActivity : Activity() {
             handler.postDelayed(this, 30_000)
         }
     }
+    private lateinit var failureNotice: TextView
     private lateinit var shadowText: TextView
 
     private val runtimeStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: Intent) {
-            if (intent.action == WearWorkoutService.ACTION_STATE) applyRuntimeState(intent)
-            else if (intent.action == WatchHomeStore.ACTION_OVERVIEW) updateUi()
-            else if (intent.action == WearWorkoutService.ACTION_WORKOUT_CONTROL) {
-                updateUi()
-                val message = when (intent.getStringExtra("status")) {
-                    "STALE", "NO_PLAN" -> "폰에서 루틴을 다시 선택해 주세요"
-                    "BUSY" -> "폰에서 진행 중인 운동을 확인해 주세요"
-                    "REJECTED" -> "요청한 세트가 변경됐어요"
-                    else -> null
+            uiBoundary("runtime receiver") {
+                if (intent.action == WearWorkoutService.ACTION_STATE) applyRuntimeState(intent)
+                else if (intent.action == WatchHomeStore.ACTION_OVERVIEW) updateUi()
+                else if (intent.action == WearWorkoutService.ACTION_WORKOUT_CONTROL) {
+                    updateUi()
+                    val message = when (intent.getStringExtra("status")) {
+                        "STALE", "NO_PLAN" -> "폰에서 루틴을 다시 선택해 주세요"
+                        "BUSY" -> "폰에서 진행 중인 운동을 확인해 주세요"
+                        "REJECTED" -> "요청한 세트가 변경됐어요"
+                        else -> null
+                    }
+                    if (message != null) Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
                 }
-                if (message != null) Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -139,8 +143,7 @@ class MainActivity : Activity() {
     private val restUiTicker = object : Runnable {
         override fun run() {
             if (!resting) return
-            updateUi()
-            handler.postDelayed(this, 250L)
+            if (updateUi()) handler.postDelayed(this, 250L)
         }
     }
 
@@ -153,15 +156,15 @@ class MainActivity : Activity() {
             updateStateText?.visibility = if (otaCoordinator.store.local()?.phase == dev.kyungmin.kcoach.updates.OtaPhase.USER_ACTION_REQUIRED) View.VISIBLE else View.GONE
         }
         emulatorBridge.start()
-        startService(Intent(this, WearCommandService::class.java))
-        startService(Intent(this, WearWorkoutService::class.java))
+        startServiceSafely(Intent(this, WearCommandService::class.java))
+        startServiceSafely(Intent(this, WearWorkoutService::class.java))
         registerReceiver(runtimeStateReceiver, IntentFilter(WearWorkoutService.ACTION_STATE).apply {
             addAction(WearWorkoutService.ACTION_WORKOUT_CONTROL)
             addAction(WatchHomeStore.ACTION_OVERVIEW)
         }, android.content.Context.RECEIVER_NOT_EXPORTED)
         if (!isEmulator) requestPermissionsIfNeeded()
         updateUi()
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
         applyCommandIntent(intent)
         sendWatchUiReady()
     }
@@ -184,9 +187,9 @@ class MainActivity : Activity() {
         applyCommandIntent(intent)
     }
 
-    private fun applyCommandIntent(intent: Intent) {
-        val command = intent.getStringExtra("command") ?: return
-        startService(Intent(this, WearWorkoutService::class.java).apply {
+    private fun applyCommandIntent(intent: Intent) = uiBoundary("command intent") {
+        val command = intent.getStringExtra("command") ?: return@uiBoundary
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).apply {
             putExtra(WearWorkoutService.EXTRA_COMMAND, command)
             putExtra("session", intent.getStringExtra("session").orEmpty())
             putExtra("exerciseId", intent.getStringExtra("exerciseId").orEmpty())
@@ -238,7 +241,7 @@ class MainActivity : Activity() {
             resultGeneration += 1; phoneResultPending = false; phoneResultStatus = ""
         }
         updateScreenPolicy()
-        updateUi()
+        if (updateUi() && ::failureNotice.isInitialized) failureNotice.visibility = View.GONE
         handler.removeCallbacks(restUiTicker)
         if (resting) handler.post(restUiTicker)
     }
@@ -248,7 +251,7 @@ class MainActivity : Activity() {
         resumed = true
         // The screen may have been off while the service raised the phone-viewing question.
         // Ask for the live phase so the watch shows the question instead of a stale page.
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
         updateScreenPolicy()
         otaCoordinator.attach(this)
         handler.removeCallbacks(clockTicker)
@@ -321,6 +324,17 @@ class MainActivity : Activity() {
             addView(calibrationView, FrameLayout.LayoutParams(-1, -1))
             addView(resultView, FrameLayout.LayoutParams(-1, -1))
             addView(setDoneLayer, FrameLayout.LayoutParams(-1, -1))
+            failureNotice = label("워치 상태를 확인할 수 없어요\n폰에서 운동을 확인해 주세요\n눌러서 다시 확인", 15f, Color.WHITE).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+                setBackgroundColor(Color.BLACK)
+                visibility = View.GONE
+                setOnClickListener {
+                    startServiceSafely(Intent(this@MainActivity, WearWorkoutService::class.java)
+                        .putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
+                }
+            }
+            addView(failureNotice, FrameLayout.LayoutParams(-1, -1))
         }
     }
 
@@ -480,23 +494,22 @@ class MainActivity : Activity() {
     }
 
     /** Entering the editor stops counting so lifting the wrist to look at the watch is not counted as a rep. */
-    private fun onPageChanged(page: Int) {
+    private fun onPageChanged(page: Int) = uiBoundary("page change") {
         val editing = page == -1 && running && !resting && !paused
         if (editing != countingPausedForEdit) {
-            countingPausedForEdit = editing
-            sendWorkoutCommand(if (editing) "COUNTING_PAUSE" else "COUNTING_RESUME")
+            if (sendWorkoutCommand(if (editing) "COUNTING_PAUSE" else "COUNTING_RESUME")) countingPausedForEdit = editing
         }
         updateUi()
     }
 
-    private fun sendWorkoutCommand(command: String, configure: Intent.() -> Unit = {}) {
-        if (sessionId.isBlank()) return
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command)
+    private fun sendWorkoutCommand(command: String, configure: Intent.() -> Unit = {}): Boolean {
+        if (sessionId.isBlank()) return false
+        return startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command)
             .putExtra("session", sessionId).putExtra("setId", setId).putExtra("attemptId", attemptId).apply(configure))
     }
 
     private fun bypassStartDirection() {
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "START_DIRECTION_BYPASS")
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "START_DIRECTION_BYPASS")
             .putExtra("session", sessionId).putExtra("setId", setId).putExtra("attemptId", attemptId))
     }
 
@@ -519,7 +532,7 @@ class MainActivity : Activity() {
                 rotaryRemainder -= steps
                 if (resting && pager.page == 0) {
                     window.decorView.performHapticFeedback(if (Build.VERSION.SDK_INT >= 34) 18 /* ROTARY_SCROLL_TICK */ else android.view.HapticFeedbackConstants.CLOCK_TICK)
-                    adjustRest(steps * 10)
+                    uiBoundary("bezel rest adjustment") { adjustRest(steps * 10) }
                 }
             }
             return true
@@ -614,7 +627,27 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateUi() {
+    // A normal redraw must not hide a failed command; only a fresh runtime snapshot clears the notice.
+    private fun showUiFailure(operation: String, error: Throwable) {
+        Log.e("WatchMainActivity", "$operation failed; waiting for runtime state", error)
+        if (::failureNotice.isInitialized) failureNotice.visibility = View.VISIBLE
+    }
+
+    private inline fun uiBoundary(operation: String, action: () -> Unit): Boolean = try {
+        action()
+        true
+    } catch (error: Exception) {
+        showUiFailure(operation, error)
+        false
+    }
+
+    private fun startServiceSafely(request: Intent): Boolean = uiBoundary("start ${request.component?.shortClassName} ${request.getStringExtra(WearWorkoutService.EXTRA_COMMAND)}") {
+        checkNotNull(startService(request)) { "Service was not found" }
+    }
+
+    private fun updateUi(): Boolean = uiBoundary("render") { renderUi() }
+
+    private fun renderUi() {
         if (!::face.isInitialized) return
         updateScreenPolicy()
         val now = System.currentTimeMillis()
@@ -824,7 +857,7 @@ class MainActivity : Activity() {
     }
 
     private fun sendPhoneCheck(command: String) {
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command))
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command))
     }
 
     private fun rollCountIfChanged(measuring: Boolean) {
@@ -856,8 +889,8 @@ class MainActivity : Activity() {
         val existing = manualOutbox.latest(sessionId, setId, attemptId)
         val command = ManualSetCommand(java.util.UUID.randomUUID().toString(), sessionId, exerciseId, setIndex, setId, attemptId,
             count, existing?.ack?.currentRevision ?: 0L, if (existing?.ack != null) ManualSetOperation.EDIT else ManualSetOperation.COMPLETE)
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "MANUAL_SUBMIT")
-            .putExtra("payload", WireCodec.encode(command.toEnvelope(android.os.SystemClock.elapsedRealtime(), System.currentTimeMillis()))))
+        if (!startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "MANUAL_SUBMIT")
+            .putExtra("payload", WireCodec.encode(command.toEnvelope(android.os.SystemClock.elapsedRealtime(), System.currentTimeMillis()))))) return
         manualStatus = "PENDING"; updateUi()
     }
 
@@ -892,7 +925,7 @@ class MainActivity : Activity() {
                 if (isFinishing || isDestroyed || sessionId != session || setId != set || attemptId != attempt ||
                     shadowCommandId != command || shadowEventIndex != index || shadowEmissionNs != emission ||
                     !shadowText.getGlobalVisibleRect(android.graphics.Rect())) return@runOnUiThread
-                startService(Intent(this, WearWorkoutService::class.java)
+                startServiceSafely(Intent(this, WearWorkoutService::class.java)
                     .putExtra(WearWorkoutService.EXTRA_COMMAND, "PATTERN_FRAME_COMMIT")
                     .putExtra("session", session).putExtra("setId", set).putExtra("attemptId", attempt)
                     .putExtra("patternCommandId", command).putExtra("eventIndex", index)
@@ -906,7 +939,7 @@ class MainActivity : Activity() {
         if (!resting || workoutControls.pending().isNotEmpty() || !workoutControls.supportsControls() || setId.isBlank() || attemptId.isBlank()) return
         val request = dev.kyungmin.kcoach.core.WatchWorkoutControl(java.util.UUID.randomUUID().toString(),
             dev.kyungmin.kcoach.core.WatchWorkoutAction.NEXT_SET, sessionId, setId, attemptId)
-        startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "WORKOUT_CONTROL_SUBMIT")
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "WORKOUT_CONTROL_SUBMIT")
             .putExtra("payload", request.encode()))
     }
 
@@ -951,8 +984,8 @@ class MainActivity : Activity() {
             }
             val command = ManualSetCommand(java.util.UUID.randomUUID().toString(), session, exercise, index, set, attempt,
                 count, revision, if (existing?.ack != null) ManualSetOperation.EDIT else ManualSetOperation.COMPLETE)
-            startService(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "MANUAL_SUBMIT")
-                .putExtra("payload", WireCodec.encode(command.toEnvelope(android.os.SystemClock.elapsedRealtime(), System.currentTimeMillis()))))
+            if (!startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "MANUAL_SUBMIT")
+                .putExtra("payload", WireCodec.encode(command.toEnvelope(android.os.SystemClock.elapsedRealtime(), System.currentTimeMillis()))))) return
             manualStatus = "PENDING"; updateUi()
         }
         fun editor() {

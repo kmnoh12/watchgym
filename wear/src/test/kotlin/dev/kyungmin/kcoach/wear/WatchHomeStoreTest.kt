@@ -42,4 +42,15 @@ class WatchHomeStoreTest {
         assertFalse(store.receiveOverview(JSONObject().put("schemaVersion", 1).put("generatedAtMs", System.currentTimeMillis())
             .put("weekStartDate", "invalid").put("weekWorkoutCount", 0).toString()))
     }
+    @Test fun corruptedCachedCountsAreUnavailableRatherThanCrashingOrInventingZero() {
+        val app = RuntimeEnvironment.getApplication()
+        val store = WatchHomeStore(app)
+        val prefs = app.getSharedPreferences("watch-home", 0)
+        for (count in listOf(null, JSONObject.NULL, "broken", "3", -1, 10_001, 2.5)) {
+            val json = JSONObject().put("weekStartDate", "2026-10-19").put("weekWorkoutCount", count)
+            prefs.edit().putString("overview", json.toString()).commit()
+            assertNull("Invalid count: $count", store.weekCount(LocalDate.parse("2026-10-21")))
+        }
+    }
+
 }
