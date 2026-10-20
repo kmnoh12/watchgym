@@ -25,6 +25,8 @@ class WorkoutTerminationTest {
     @Test fun removingTaskDiscardsCompletedTwelveAndStopsService() {
         val store = SessionStore(app); assertTrue(store.saveActive(snapshot()))
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
+        // Android always delivers a start request after onCreate; stops are valid only against it.
+        controller.get().onStartCommand(Intent(), 0, 1)
         controller.get().onTaskRemoved(Intent())
         assertNull(store.loadActive().getOrThrow())
         assertTrue(store.isSessionClosed("task-removed"))

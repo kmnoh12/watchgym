@@ -151,28 +151,63 @@ class PhoneWearListenerService : WearableListenerService() {
                     Log.w(TAG, "cached capture scan deferred", error)
                 }
             }.addOnSuccessListener { buffer ->
-                val items = try {
-                    if (!settled.compareAndSet(false, true)) return@addOnSuccessListener
-                    buffer.map { it.freeze() }
-                } finally { buffer.release() }
-                handler.removeCallbacks(timeout)
-                val pending = java.util.ArrayDeque(items)
-                fun next() {
-                    if (inboxExecutor.isShutdown || pending.isEmpty()) {
-                        assetRecoveryQueued.set(false)
-                        if (assetRecoveryRequested.get() && !inboxExecutor.isShutdown) recoverCachedAssets()
-                        return
-                    }
-                    runCatching { receiveCaptureAsset(pending.removeFirst()) { handler.post { next() } } }
-                        .onFailure { Log.w(TAG, "cached capture read deferred", it); handler.post { next() } }
-                }
-                next()
+                consumeCachedAssets(settled, handler, timeout, { buffer.map { it.freeze() } }, { buffer.release() })
             }
         }.onFailure { error ->
             if (settled.compareAndSet(false, true)) {
                 handler.removeCallbacks(timeout); assetRecoveryQueued.set(false)
                 Log.w(TAG, "cached capture scan unavailable", error)
             }
+        }
+    }
+
+    /** The success callback runs later: its buffer work needs its own boundary and always releases once. */
+    internal fun consumeCachedAssets(
+        settled: AtomicBoolean,
+        handler: Handler,
+        timeout: Runnable,
+        freeze: () -> List<com.google.android.gms.wearable.DataItem>,
+        release: () -> Unit,
+    ) {
+        val claimed = settled.compareAndSet(false, true)
+        val frozen = runCatching { if (claimed) freeze() else emptyList() }
+        val released = runCatching(release)
+        if (!claimed) {
+            released.onFailure { Log.w(TAG, "late cached capture buffer release failed", it) }
+            return
+        }
+        handler.removeCallbacks(timeout)
+        val error = frozen.exceptionOrNull() ?: released.exceptionOrNull()
+        if (error != null) {
+            assetRecoveryQueued.set(false)
+            assetRecoveryRequested.set(true)
+            Log.e(TAG, "cached capture buffer failed; retained for reconnect", error)
+            released.exceptionOrNull()?.takeIf { it !== error }?.let { Log.w(TAG, "cached capture buffer release also failed", it) }
+            runCatching {
+                prefs.edit().putString("assetScanError", error.message ?: "cached capture buffer failure").apply()
+                sendBroadcast(Intent(ACTION_CAPTURE_ERROR).setPackage(packageName)
+                    .putExtra("stage", "asset_scan").putExtra("error", "워치 기록을 불러오지 못했어요. 연결 후 다시 시도해 주세요"))
+            }.onFailure { Log.e(TAG, "cached capture failure status could not be published", it) }
+            return
+        }
+        runCatching {
+            prefs.edit().remove("assetScanError").apply()
+            val items = frozen.getOrThrow()
+            val pending = java.util.ArrayDeque(items)
+            fun next() {
+                if (inboxExecutor.isShutdown || pending.isEmpty()) {
+                    assetRecoveryQueued.set(false)
+                    if (assetRecoveryRequested.get() && !inboxExecutor.isShutdown) recoverCachedAssets()
+                    return
+                }
+                runCatching { receiveCaptureAsset(pending.removeFirst()) { handler.post { next() } } }
+                    .onFailure { Log.w(TAG, "cached capture read deferred", it); handler.post { next() } }
+            }
+            next()
+        }.onFailure {
+            assetRecoveryQueued.set(false)
+            assetRecoveryRequested.set(true)
+            Log.e(TAG, "cached capture dispatch deferred", it)
         }
     }
 

@@ -39,20 +39,21 @@ class PhoneWorkoutService : Service() {
     private val sessionController by lazy { PhoneSessionController(sessionStore, wearBridge::sendRaw) }
     private var idleSinceMs = -1L
     private var taskRemoved = false
-    private var foregroundReady = false
     // Newest start request this instance has seen; idle stops are only valid against it.
     private var lastStartId = 0
+    private var runtimeInitialized = false
 
     override fun onCreate() {
         super.onCreate()
         // Meet the foreground-start deadline before recovery can touch capture files or locks.
         createNotificationChannel()
-        if (!promoteToForeground()) {
-            // Background start restrictions can refuse the promotion even after startForegroundService.
-            // Durable commands stay in the outbox; a later foreground start retries them.
-            stopSelf()
-            return
-        }
+        // onCreate has no startId: never cancel a queued foreground start before onStartCommand can acknowledge it.
+        promoteToForeground()
+    }
+
+    private fun initializeRuntime() {
+        if (runtimeInitialized) return
+        runtimeInitialized = true
         CalibrationCaptureStore(this).recoverAfterProcessRestart().onSuccess { previous ->
             if (previous != null && sessionStore.loadActive().getOrNull() == null) {
                 runCatching { PhoneCommandOutbox(this).enqueue(WearSync.command("STOP", previous.id, "", 0, 0)) }
@@ -73,9 +74,12 @@ class PhoneWorkoutService : Service() {
         // but before onDestroy. onCreate alone cannot acknowledge that new request.
         lastStartId = startId
         if (!promoteToForeground()) {
-            stopSelf(startId)
+            notifyCommandRejected(this, "FOREGROUND_PROMOTION")
+            stopForStart(startId)
             return START_NOT_STICKY
         }
+        initializeRuntime()
+        taskRemoved = false
         idleSinceMs = -1L
         startHeartbeat()
         startRestTicker()
@@ -107,19 +111,13 @@ class PhoneWorkoutService : Service() {
         // Best effort now; durable outbox survives until reconnect if delivery fails.
         runCatching { wearBridge.retryPendingCommand() }
             .onFailure { Log.w("KCoachEvent", "Removed task STOP delivery deferred", it) }
-        heartbeatTicker?.let(handler::removeCallbacks)
-        restTicker?.let(handler::removeCallbacks)
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        foregroundReady = false
-        stopSelf()
+        stopForStart(lastStartId)
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         // The persisted session and command outbox remain available for reconnection.
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        foregroundReady = false
-        stopSelf()
+        stopForStart(startId)
     }
 
     override fun onDestroy() {
@@ -173,6 +171,7 @@ class PhoneWorkoutService : Service() {
     }
 
     private fun stopIfIdle(nowMs: Long): Boolean {
+        if (lastStartId == 0) return false
         if (hasActiveRuntime()) { idleSinceMs = -1L; return false }
         if (idleSinceMs < 0) idleSinceMs = nowMs
         val delivering = PhoneCommandOutbox(this).pendingForDelivery() != null || wearBridge.hasPendingDelivery() ||
@@ -180,15 +179,19 @@ class PhoneWorkoutService : Service() {
         if (delivering && nowMs - idleSinceMs < IDLE_DELIVERY_GRACE_MS) return false
         // A plain stopSelf() would also drop a startForegroundService request that is already queued for this
         // instance, which then never calls startForeground and crashes the app. Stop only if no newer start exists.
-        val stopped = if (lastStartId > 0) stopSelfResult(lastStartId) else { stopSelf(); true }
-        if (!stopped) {
+        if (!stopForStart(lastStartId)) {
             idleSinceMs = -1L
             return false
         }
+        return true
+    }
+
+    private fun stopForStart(startId: Int): Boolean {
+        // A stale timeout or queued newer start must keep both foreground status and tickers intact.
+        if (startId <= 0 || startId != lastStartId || !stopSelfResult(startId)) return false
         heartbeatTicker?.let(handler::removeCallbacks)
         restTicker?.let(handler::removeCallbacks)
         stopForeground(STOP_FOREGROUND_REMOVE)
-        foregroundReady = false
         return true
     }
 
@@ -197,11 +200,9 @@ class PhoneWorkoutService : Service() {
      * let that exception escape the main looper; durable commands remain in the outbox.
      */
     private fun promoteToForeground(): Boolean {
-        if (foregroundReady) return true
         val promoted = promoteForegroundSafely {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
-        if (promoted) foregroundReady = true
         return promoted
     }
 
