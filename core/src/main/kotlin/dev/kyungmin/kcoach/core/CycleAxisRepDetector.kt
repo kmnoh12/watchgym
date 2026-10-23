@@ -22,7 +22,14 @@ import kotlin.math.sqrt
  * Constants are frozen with this algorithm ID (cycle-axis-return-family-v1); changing them requires a new version.
  * Developed on MM-Fit left-wrist data plus one Galaxy Watch8 cable seated row; it is not a validated Watch8 accuracy claim.
  */
-class CycleAxisRepDetector {
+class CycleAxisRepDetector(
+    /**
+     * Lateral raises start with the arm down, so the first lobe is the lift and a rep is complete when the arm comes back.
+     * The first rep is therefore reported at the return lobe, not at the lift: on real sets the lift peak was reported first
+     * and the same rep's return peak reported again, making 10 reps read 11 with the cue firing at the lift.
+     */
+    private val countOnReturn: Boolean = false,
+) {
     companion object {
         private const val MIN_SAMPLE_GAP_NS = 38_000_000L
         private const val STEP_NS = 100_000_000L
@@ -46,6 +53,9 @@ class CycleAxisRepDetector {
         private const val MAX_MEDIAN_S = 7.0
         private const val GYRO_AMPLITUDE_FLOOR = 0.4 // rad/s
         private const val DYN_AMPLITUDE_FLOOR = 1.5 // m/s^2
+
+        /** How long the first report waits for the return lobe before falling back to the lift peak. */
+        private const val RETURN_WAIT_NS = 3_000_000_000L
     }
 
     private class TrailingMean(private val window: Int) {
@@ -123,7 +133,9 @@ class CycleAxisRepDetector {
     }
 
     private class Candidate(val score: Double, val peaksNs: LongArray, val amplitude: Double, val medianS: Double,
-        val gyroSource: Boolean, val sign: Int)
+        val gyroSource: Boolean, val sign: Int) {
+        var oppositeNs: LongArray = LongArray(0)
+    }
 
     private fun windowStart(nowNs: Long): Int {
         var i = count - 1
@@ -149,11 +161,16 @@ class CycleAxisRepDetector {
                 val peaks = findPeaks(projected, from, sign, p95)
                 if (peaks.isEmpty()) continue
                 val candidate = candidate(peaks, p95, floor, gyroSource, sign) ?: continue
+                if (countOnReturn) {
+                    val opposite = findPeaks(projected, from, -sign, p95)
+                    candidate.oppositeNs = LongArray(opposite.size) { times[opposite[it]] }
+                }
                 if (locked && (gyroSource != lockedGyro || sign != lockedSign)) continue
                 if (best == null || candidate.score < best.score) best = candidate
             }
         }
-        val chosen = best ?: return
+        var chosen = best ?: return
+        if (countOnReturn && lastPeakNs == null) chosen = returnLobeDelivery(chosen, nowNs) ?: return
         for (peak in chosen.peaksNs) {
             if (peak > nowNs - confirmNs) break
             val delivered = lastPeakNs
@@ -166,6 +183,20 @@ class CycleAxisRepDetector {
             lastPeakNs = peak
             if (!locked) { locked = true; lockedGyro = chosen.gyroSource; lockedSign = chosen.sign }
         }
+    }
+
+    /**
+     * Before the first report: treats the earliest lobe as the lift and reports the next lobe of the other sign. Returns null
+     * to keep waiting for it; when it never shows up within [RETURN_WAIT_NS] the one-sided signal is reported as before.
+     */
+    private fun returnLobeDelivery(chosen: Candidate, nowNs: Long): Candidate? {
+        val sameFirst = chosen.peaksNs.firstOrNull() ?: Long.MAX_VALUE
+        val otherFirst = chosen.oppositeNs.firstOrNull() ?: Long.MAX_VALUE
+        val liftNs = minOf(sameFirst, otherFirst)
+        val returnPeaks = (if (sameFirst <= otherFirst) chosen.oppositeNs else chosen.peaksNs).filter { it > liftNs }.toLongArray()
+        if (returnPeaks.isEmpty()) return if (nowNs - liftNs > RETURN_WAIT_NS) chosen else null
+        val returnSign = if (sameFirst <= otherFirst) -chosen.sign else chosen.sign
+        return Candidate(chosen.score, returnPeaks, chosen.amplitude, chosen.medianS, chosen.gyroSource, returnSign)
     }
 
     /** Three or more peaks are ranked by interval regularity; one or two are only provisional and ranked by size. */

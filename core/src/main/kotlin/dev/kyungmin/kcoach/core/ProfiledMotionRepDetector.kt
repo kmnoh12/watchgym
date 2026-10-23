@@ -77,12 +77,20 @@ class ProfiledMotionRepDetector(
     companion object {
         private const val GRAVITY_FILTER_ALPHA = 0.10
         private const val MAX_SAMPLE_GAP_MS = 450L
+
+        /** Provisional (no plate-press capture yet): a lobe this large that failed validation still shows which way the press goes. */
+        private const val PHASE_LOBE_MIN_MS = 30L
+        private const val PHASE_LOBE_FRACTION = 0.15
+
+        /** A truncated opening press and the return that follows it are one rep when they are this close. */
+        private const val OPENING_RESCUE_GAP_MS = 500L
     }
 
     private val poseCounter = if (profile.family == MotionFamily.FLEXION_EXTENSION) ReturnToPoseRepDetector(profile.minimumRepMs) else null
     private val verticalCounter = if (profile.family == MotionFamily.VERTICAL_PRESS_RETURN) VerticalPressRepDetector(profile) else null
     private val translationCounter = if (profile.family == MotionFamily.TRANSLATION_PRESS_RETURN) TranslationPressRepDetector(profile) else null
-    private val cycleCounter = if (profile.family == MotionFamily.CYCLE_AXIS_RETURN) CycleAxisRepDetector() else null
+    private val cycleCounter = if (profile.family == MotionFamily.CYCLE_AXIS_RETURN)
+        CycleAxisRepDetector(countOnReturn = ExerciseMeasurementContracts.resolve(profile.exerciseId).recipe == MeasurementRecipe.LATERAL_RAISE) else null
     private val legacyLobes = profile.id.substringBefore('+') == profile.family.legacyAlgorithmId
 
     private var lastTimestampNs = 0L
@@ -103,6 +111,16 @@ class ProfiledMotionRepDetector(
     private var pendingDirection = 0
     private var lastCommittedEndNs = Long.MIN_VALUE
     private var refractoryUntilNs = 0L
+
+    // Which signed lobe is the "out" half (the press) on the locked axis, learned from the first meaningful lobe of the set
+    // and kept across lobe resets. Used only to recognise a cut-off opening press.
+    private var outSign = 0
+    private var outAxis = -1
+    private var rejectedOutStartNs = 0L
+    private var rejectedOutEndNs = 0L
+    private var rejectedOutPeak = 0.0
+    private var rejectedOutDisplacement = 0.0
+    private var rejectedOutSpread = 0.0
 
     // Pose counting previously allowed long top holds without a maximum duration.
     // Bound set-end grace at 12s, preserving slow returns; this policy still needs Watch8 validation.
@@ -203,6 +221,7 @@ class ProfiledMotionRepDetector(
         lockedAxis = -1
         lastTimestampNs = 0L
         lastMotionNs = 0L
+        forgetPhase()
     }
 
     private fun trackMotion(sample: SensorSample) {
@@ -278,9 +297,20 @@ class ProfiledMotionRepDetector(
             lobeDisplacement >= profile.minimumLobeDisplacement &&
             spread >= profile.minimumTrajectorySpread
         if (!valid) {
+            if (!legacyLobes) {
+                noteRejectedLobe(endTimestampNs, durationMs, spread)
+                // A brief twitch between the press and its return (or from the haptic motor) is not a movement:
+                // it must not throw away the half rep already seen. Over-long or single-axis lobes still reset.
+                if (durationMs <= profile.maximumLobeMs &&
+                    (durationMs < profile.minimumLobeMs || lobeDisplacement < profile.minimumLobeDisplacement)) {
+                    resetActiveLobe()
+                    return null
+                }
+            }
             resetAll()
             return null
         }
+        if (!legacyLobes) rescueTruncatedOpeningPress()
 
         val result = if (pendingStartNs == 0L || !legacyLobes && pendingDirection == direction) {
             pendingStartNs = lobeStartNs
@@ -323,6 +353,57 @@ class ProfiledMotionRepDetector(
         }
         resetActiveLobe()
         return result
+    }
+
+    private fun meaningfulLobe(durationMs: Long): Boolean =
+        durationMs >= PHASE_LOBE_MIN_MS && lobeDisplacement >= profile.minimumLobeDisplacement * PHASE_LOBE_FRACTION
+
+    private fun forgetPhase() {
+        outSign = 0
+        outAxis = -1
+        rejectedOutStartNs = 0L
+        rejectedOutEndNs = 0L
+    }
+
+    /** A lobe too short or small to count still tells which way the press goes, and may be the cut-off start of the first rep. */
+    private fun noteRejectedLobe(endTimestampNs: Long, durationMs: Long, spread: Double) {
+        if (!meaningfulLobe(durationMs)) return
+        if (outSign != 0 && lockedAxis != outAxis) forgetPhase()
+        if (outSign == 0) { outSign = direction; outAxis = lockedAxis }
+        if (direction == outSign) {
+            rejectedOutStartNs = lobeStartNs
+            rejectedOutEndNs = endTimestampNs
+            rejectedOutPeak = lobePeakRate
+            rejectedOutDisplacement = lobeDisplacement
+            rejectedOutSpread = spread
+        }
+    }
+
+    /**
+     * The first press can be cut off by the start of counting, leaving only its return lobe valid. Pairing that return with the
+     * next press shifted the whole set by half a cycle: the count and cue fired at every lift and the last return was left over.
+     * When a rejected press lobe sits right before a valid return and nothing has been counted yet, the two are the first rep.
+     * Later lone returns are left alone: dropping them cost real reps on recorded sets.
+     */
+    private fun rescueTruncatedOpeningPress() {
+        if (outSign != 0 && lockedAxis != outAxis) forgetPhase()
+        if (outSign == 0) { outSign = direction; outAxis = lockedAxis }
+        if (pendingStartNs != 0L || direction == outSign) return
+        val rescuable = rejectedOutEndNs > 0L && lastCommittedEndNs == Long.MIN_VALUE &&
+            lobeStartNs - rejectedOutEndNs in 0L..OPENING_RESCUE_GAP_MS * 1_000_000L
+        if (rescuable) {
+            pendingStartNs = rejectedOutStartNs
+            pendingTurnaroundNs = rejectedOutEndNs
+            pendingPeakRate = rejectedOutPeak
+            pendingDisplacement = rejectedOutDisplacement
+            pendingSpread = rejectedOutSpread
+            pendingDirection = outSign
+            rejectedOutEndNs = 0L
+        } else if (lastCommittedEndNs == Long.MIN_VALUE) {
+            // Nothing counted yet, so the earlier guess may have been a stray movement: take this lobe as the press.
+            outSign = direction
+            outAxis = lockedAxis
+        }
     }
 
     private fun confidence(durationMs: Long, displacement: Double, spread: Double): Double {
