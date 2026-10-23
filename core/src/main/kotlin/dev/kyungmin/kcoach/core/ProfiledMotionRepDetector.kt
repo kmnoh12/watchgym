@@ -1,6 +1,7 @@
 package dev.kyungmin.kcoach.core
 
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -77,6 +78,10 @@ class ProfiledMotionRepDetector(
     companion object {
         private const val GRAVITY_FILTER_ALPHA = 0.10
         private const val MAX_SAMPLE_GAP_MS = 450L
+        private const val MOTION_GYRO_FLOOR = 0.25
+        private const val MOTION_ACCELERATION_FLOOR = 0.25
+        private const val MOTION_BASELINE_TAU_S = 1.5
+        private const val MOTION_SMOOTHING_TAU_S = 0.15
 
         /** Provisional (no plate-press capture yet): a lobe this large that failed validation still shows which way the press goes. */
         private const val PHASE_LOBE_MIN_MS = 30L
@@ -94,6 +99,9 @@ class ProfiledMotionRepDetector(
     private val legacyLobes = profile.id.substringBefore('+') == profile.family.legacyAlgorithmId
 
     private var lastTimestampNs = 0L
+    private var motionSampleNs = 0L
+    private var accelerationBaseline = Double.NaN
+    private var accelerationDeviation = 0.0
     private var gravityInitialized = false
     private val gravity = DoubleArray(3)
     private var lockedAxis = -1
@@ -236,10 +244,21 @@ class ProfiledMotionRepDetector(
                 sample.accelerationY.toDouble() * sample.accelerationY +
                 sample.accelerationZ.toDouble() * sample.accelerationZ,
         )
-        if (gyro.isFinite() && gyro >= 0.25 ||
-            acceleration.isFinite() && abs(acceleration - 9.80665) >= 0.25) {
-            lastMotionNs = sample.timestampNs
+        // The accelerometer magnitude of a motionless Watch8 sits 0.07-0.21 m/s^2 off 9.80665 and varies between sessions
+        // (recorded captures). Measured against that fixed value a still wrist read as moving a third of the time and the
+        // set never ended, so movement is a deviation from a slow baseline, smoothed against single noisy samples.
+        val t = sample.timestampNs
+        var accelerationMoving = false
+        if (acceleration.isFinite()) {
+            val dtS = if (motionSampleNs > 0L && t > motionSampleNs) ((t - motionSampleNs) / 1e9).coerceAtMost(0.5) else 0.0
+            if (accelerationBaseline.isNaN()) accelerationBaseline = acceleration
+            else accelerationBaseline += (acceleration - accelerationBaseline) * (1.0 - exp(-dtS / MOTION_BASELINE_TAU_S))
+            accelerationDeviation += (abs(acceleration - accelerationBaseline) - accelerationDeviation) *
+                (1.0 - exp(-dtS / MOTION_SMOOTHING_TAU_S))
+            accelerationMoving = accelerationDeviation >= MOTION_ACCELERATION_FLOOR
         }
+        motionSampleNs = t
+        if (gyro.isFinite() && gyro >= MOTION_GYRO_FLOOR || accelerationMoving) lastMotionNs = t
     }
 
     private fun featureVector(sample: SensorSample): DoubleArray {
