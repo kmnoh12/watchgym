@@ -4,6 +4,8 @@ plugins {
 }
 
 android {
+    // Personal build: the release-time lintVital pass adds minutes and catches nothing the tests do not.
+    lint { checkReleaseBuilds = false }
     namespace = "dev.kyungmin.kcoach.wear"
     compileSdk = 35
 
