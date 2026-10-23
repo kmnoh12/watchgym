@@ -17,6 +17,7 @@ internal object LocalExitDiagnostics {
     @Volatile private var screen = "UNKNOWN"
     @Volatile private var phase = "UNKNOWN"
     private var directory: File? = null
+    private var appContext: Context? = null
     private var priorStateAtLaunch: String? = null
     private var sessionToken = ""
     private var lastSampleNs = 0L
@@ -31,8 +32,20 @@ internal object LocalExitDiagnostics {
         lastFailure = null
         guarded("install") {
             directory = File(app.noBackupFilesDir, "exit-diagnostics").apply { mkdirs() }
+            appContext = app.applicationContext
             priorStateAtLaunch = readObject("last-state.json")?.toString()
         }
+        guarded("device-info") { write("device-info.json", DeviceFacts.snapshot(app)) }
+        app.registerComponentCallbacks(object : android.content.ComponentCallbacks2 {
+            override fun onTrimMemory(level: Int) {
+                // Routine UI-hidden trims are left out so the bounded journal keeps the pressure that matters.
+                if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+                    level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                    level == android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE) recordMemoryPressure("trim-$level")
+            }
+            override fun onLowMemory() = recordMemoryPressure("low-memory")
+            override fun onConfigurationChanged(newConfig: android.content.res.Configuration) = Unit
+        })
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try { recordException(error) } finally { previous?.uncaughtException(thread, error) }
@@ -57,8 +70,9 @@ internal object LocalExitDiagnostics {
                     .getHistoricalProcessExitReasons(context.packageName, 0, 8)
                 val rows = JSONArray()
                 exits.forEach { exit -> rows.put(JSONObject().put("atMs", exit.timestamp)
-                    .put("reason", exit.reason).put("status", exit.status).put("importance", exit.importance)
-                    .put("pssKb", exit.pss).put("rssKb", exit.rss)) }
+                    .put("reason", exit.reason).put("reasonName", exitReasonName(exit.reason))
+                    .put("description", exit.description?.take(160)).put("status", exit.status)
+                    .put("importance", exit.importance).put("pssKb", exit.pss).put("rssKb", exit.rss)) }
                 for (i in rows.length() - 1 downTo 0) {
                     val exit = rows.getJSONObject(i)
                     append("event-history.json", "events", stateJson().put("kind", "system-exit")
@@ -121,7 +135,7 @@ internal object LocalExitDiagnostics {
                     .put("frames", JSONArray(current.stackTrace.take(6).map { it.toString().take(120) })))
                 cause = current.cause?.takeUnless { it === current }
             }
-            val report = stateJson().put("causes", causes)
+            val report = stateJson().put("causes", causes).put("memory", DeviceFacts.memory(appContext))
             append("exception-history.json", "exceptions", report)
             write("last-exception.json", report)
         }
@@ -130,11 +144,25 @@ internal object LocalExitDiagnostics {
     /** Bounded reports plus an explicit status when any diagnostic operation failed. */
     @Synchronized fun readReports(): Result<Map<String, String>> = runCatching {
         val reports = linkedMapOf<String, String>()
-        listOf("last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json", "runtime-events.json").forEach { name ->
+        listOf("last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json", "runtime-events.json", "memory-events.json", "device-info.json").forEach { name ->
             readObject(name)?.let { reports[name] = it.toString() }
         }
         lastFailure?.let { reports["diagnostics-status.json"] = JSONObject().put("failure", it).toString() }
         reports
+    }
+
+    private fun recordMemoryPressure(kind: String) {
+        guarded("memory-event") {
+            append("memory-events.json", "events", stateJson().put("kind", kind)
+                .put("memory", DeviceFacts.memory(appContext)))
+        }
+    }
+
+    private fun exitReasonName(reason: Int): String = when (reason) {
+        1 -> "SELF"; 2 -> "SIGNALED"; 3 -> "LOW_MEMORY"; 4 -> "CRASH"; 5 -> "CRASH_NATIVE"; 6 -> "ANR"
+        7 -> "INITIALIZATION_FAILURE"; 8 -> "PERMISSION_CHANGE"; 9 -> "EXCESSIVE_RESOURCE_USAGE"
+        10 -> "USER_REQUESTED"; 11 -> "USER_STOPPED"; 12 -> "DEPENDENCY_DIED"; 13 -> "OTHER"
+        14 -> "FREEZER"; 15 -> "PACKAGE_STATE_CHANGE"; 16 -> "PACKAGE_UPDATED"; else -> "UNKNOWN_$reason"
     }
 
     private fun stateJson() = JSONObject().put("atMs", System.currentTimeMillis()).put("screen", screen.take(128)).put("phase", phase.take(128))

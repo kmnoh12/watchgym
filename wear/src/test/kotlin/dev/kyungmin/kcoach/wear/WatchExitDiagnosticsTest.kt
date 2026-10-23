@@ -24,6 +24,7 @@ class WatchExitDiagnosticsTest {
             val report = LocalExitDiagnostics.readReports().getOrThrow().getValue("last-exception.json")
             assertFalse(report.contains("private workout facts"))
             assertTrue(report.contains("IllegalStateException"))
+            assertTrue("memory at the moment of the crash", report.contains("heapMaxMb"))
         } finally { Thread.setDefaultUncaughtExceptionHandler(original) }
     }
     @Test fun interruptionAndRecoveryAreSeparateBoundedEventsWithOriginalSampleWatermarks() {

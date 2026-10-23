@@ -17,6 +17,17 @@ class CrashReportRelayTest {
         assertNull(CrashReportRelay.buildPayload(mapOf("last-state.json" to "{}")))
     }
 
+    @Test fun systemExitsAloneAreRelayedWhenTheSystemKilledTheAppWithoutAnException() {
+        val exits = JSONObject().put("exits", JSONArray().put(JSONObject().put("atMs", 777L).put("reasonName", "LOW_MEMORY"))).toString()
+        val payload = CrashReportRelay.buildPayload(mapOf("system-exits.json" to exits,
+            "device-info.json" to JSONObject().put("fingerprint", "f").toString()))!!
+        val json = JSONObject(payload)
+        assertEquals(777L, json.getLong("atMs"))
+        assertTrue(json.getJSONObject("reports").has("system-exits.json"))
+        assertTrue(json.getJSONObject("reports").has("device-info.json"))
+        assertTrue(!json.getJSONObject("reports").has("last-exception.json"))
+    }
+
     @Test fun thePayloadCarriesTheWatchStackAndStaysInsideTheMessageLimit() {
         val payload = CrashReportRelay.buildPayload(mapOf(
             "last-exception.json" to JSONObject().put("causes", "stack").toString(),

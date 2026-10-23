@@ -1053,6 +1053,8 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (!paired) paired = true
         broadcastState(force = true)
         if (reconnected) {
+            // A crash report that found no phone at launch goes out as soon as one is reachable.
+            Thread({ runCatching { CrashReportRelay.relayIfUndelivered(applicationContext) } }, "crash-report-retry").start()
             retryDataCleanup()
             replayCompletion()
             replayManualSets()

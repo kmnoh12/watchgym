@@ -28,7 +28,7 @@ class LocalExitDiagnosticsTest {
                 entries[entry.name] = zip.readBytes().toString(Charsets.UTF_8)
             }
         }
-        assertTrue(entries.keys.all { it in setOf("export.json", "last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json") })
+        assertTrue(entries.keys.all { it in setOf("export.json", "last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json", "device-info.json") })
         assertEquals(1, JSONObject(entries.getValue("exception-history.json")).getJSONArray("exceptions").length())
         assertTrue(JSONObject(entries.getValue("export.json")).getBoolean("hasExceptionHistory"))
         assertEquals(before, entries["last-exception.json"])
@@ -64,6 +64,32 @@ class LocalExitDiagnosticsTest {
         assertTrue(names.contains("watch-runtime-events.json"))
     }
 
+    @Test fun exceptionRecordCarriesMemoryAndTheExportCarriesTheDeviceFacts() {
+        val app = RuntimeEnvironment.getApplication()
+        LocalExitDiagnostics.recordException(IllegalStateException("PRIVATE"))
+        val reports = LocalExitDiagnostics.readReports().getOrThrow()
+        val memory = JSONObject(reports.getValue("last-exception.json")).getJSONObject("memory")
+        assertTrue(memory.has("heapMaxMb")); assertTrue(memory.has("system"))
+        val device = JSONObject(reports.getValue("device-info.json"))
+        assertTrue(device.has("fingerprint")); assertTrue(device.has("previewSdk")); assertTrue(device.has("codename"))
+        val bytes = ByteArrayOutputStream().also { DiagnosticsExport.write(app, it) }.toByteArray()
+        val metadata = ZipInputStream(bytes.inputStream()).use { zip ->
+            generateSequence { zip.nextEntry }.first { it.name == "export.json" }.let { JSONObject(zip.readBytes().toString(Charsets.UTF_8)) }
+        }
+        assertTrue(metadata.has("androidPreviewSdk")); assertTrue(metadata.has("buildFingerprint"))
+        assertFalse(reports.values.any { it.contains("PRIVATE") })
+    }
+
+    @Test fun watchDeviceFactsAndMemoryJournalArriveWithTheWatchReports() {
+        val watch = JSONObject().put("atMs", 1L).put("appVersion", "0.2.12").put("reports", JSONObject()
+            .put("system-exits.json", JSONObject().put("exits", JSONArray()).toString())
+            .put("device-info.json", JSONObject().put("fingerprint", "watch-build").toString())
+            .put("memory-events.json", JSONObject().put("events", JSONArray().put(JSONObject().put("kind", "low-memory"))).toString()))
+        LocalExitDiagnostics.storeWatchReports(watch.toString())
+        val reports = LocalExitDiagnostics.readReports().getOrThrow()
+        assertTrue("watch-device-info.json" in reports); assertTrue("watch-memory-events.json" in reports)
+    }
+
     @Test fun localExceptionHasCodeFramesAndStateButNoPrivateMessages() {
         val app = RuntimeEnvironment.getApplication()
         LocalExitDiagnostics.state("ACTIVE", "WORKING")
@@ -75,7 +101,7 @@ class LocalExitDiagnosticsTest {
         assertFalse(text.contains("PRIVATE")); assertTrue(File(dir, "last-state.json").exists())
         val reports = LocalExitDiagnostics.readReports().getOrThrow()
         assertEquals(text, reports["last-exception.json"])
-        assertTrue(reports.keys.all { it in setOf("last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json") })
+        assertTrue(reports.keys.all { it in setOf("last-exception.json", "last-state.json", "system-exits.json", "exception-history.json", "event-history.json", "device-info.json") })
         assertEquals(text, File(dir, "last-exception.json").readText())
     }
     @Test fun malformedWatchReportsAndCorruptLocalFilesProduceAnIncompleteExport() {

@@ -17,10 +17,13 @@ internal object DiagnosticsExport {
             .put("exportAppVersion", BuildConfig.VERSION_NAME).put("exportAppVersionCode", BuildConfig.VERSION_CODE)
             .put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
             .put("androidVersion", Build.VERSION.RELEASE).put("androidSdk", Build.VERSION.SDK_INT)
+            .put("androidCodename", Build.VERSION.CODENAME).put("androidPreviewSdk", Build.VERSION.PREVIEW_SDK_INT)
+            .put("buildFingerprint", Build.FINGERPRINT.take(160))
             .put("reports", JSONArray(reports.keys.sorted()))
             .put("hasExceptionReport", "last-exception.json" in reports)
             .put("hasExceptionHistory", "exception-history.json" in reports)
             .put("hasWatchExceptionHistory", "watch-exception-history.json" in reports)
+            .put("hasWatchSystemExits", "watch-system-exits.json" in reports)
             .put("diagnosticsIncomplete", "diagnostics-status.json" in reports || "watch-diagnostics-status.json" in reports)
             .put("note", "Export version is not necessarily the version that crashed; older reports may lack app version.")
         ZipOutputStream(output).use { zip ->
