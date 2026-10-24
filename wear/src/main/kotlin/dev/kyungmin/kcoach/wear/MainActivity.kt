@@ -744,7 +744,6 @@ class MainActivity : Activity() {
         }
         updatePhoneCheckDialog()
         // One status line under the numbers, most urgent first; every message here used to be its own control.
-        val unresolved = manualOutbox.unresolved()
         val updateWaiting = otaCoordinator.store.local()?.phase == dev.kyungmin.kcoach.updates.OtaPhase.USER_ACTION_REQUIRED
         val phaseMessage = when (runtimePhase) {
             "CAPTURE_RECOVERY_REQUIRED" -> "센서 기록 복구가 필요해요"
@@ -755,15 +754,6 @@ class MainActivity : Activity() {
         if (active && !resting && phaseMessage.isNotEmpty()) { face.hint.text = phaseMessage; face.hint.setTextColor(WatchWorkoutFace.ORANGE) }
         else if (active && !paired) { face.hint.text = "폰 연결이 끊겼어요 · 기록은 보관돼요"; face.hint.setTextColor(WatchWorkoutFace.ORANGE) }
         else if (updateWaiting) { face.hint.text = "폰이 요청한 업데이트 계속"; face.hint.setTextColor(WatchWorkoutFace.SAGE); face.noticeAction = { otaCoordinator.confirmInstall(this) } }
-        else if (unresolved.isNotEmpty()) {
-            face.hint.text = "보관 중인 횟수 ${unresolved.size}건"; face.hint.setTextColor(WatchWorkoutFace.SAGE)
-            face.noticeAction = {
-                AlertDialog.Builder(this).setTitle("보관 중인 횟수").setMessage(manualOutbox.unresolved().joinToString("\n") {
-                    "${it.command.setIndex + 1}세트 · ${it.command.performedReps}회 · " +
-                        if (it.ack?.status == ManualSetStatus.CONFLICT) "폰 기록과 달라요" else "폰에서 확인해 주세요"
-                }).setPositiveButton("닫기", null).show()
-            }
-        }
         face.hint.isClickable = face.noticeAction != null || runtimePhase == "START_DIRECTION_WAITING"
         shadowText.visibility = if (running && shadowCommandId.isNotBlank()) View.VISIBLE else View.GONE
         shadowText.text = "보정 비교 · ${shadowCount}회"; recordShadowFrameCommit()
