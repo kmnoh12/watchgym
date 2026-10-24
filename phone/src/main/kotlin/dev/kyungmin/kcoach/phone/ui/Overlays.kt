@@ -83,9 +83,23 @@ import kotlin.math.roundToInt
 /** One bottom sheet or centred dialog shown above whatever screen is current. */
 class Overlay(val isSheet: Boolean, val content: @Composable (dismiss: () -> Unit) -> Unit)
 
+/** A short-lived bar at the bottom that lets the user take back something just done, instead of asking first. */
+class UndoNotice(val message: String, val onUndo: () -> Unit)
+
 class OverlayState {
     var current by mutableStateOf<Overlay?>(null)
         private set
+
+    var undo by mutableStateOf<UndoNotice?>(null)
+        private set
+
+    fun showUndo(notice: UndoNotice) {
+        undo = notice
+    }
+
+    fun clearUndo(notice: UndoNotice) {
+        if (undo === notice) undo = null
+    }
 
     fun show(overlay: Overlay) {
         current = overlay
@@ -101,6 +115,7 @@ fun OverlayHost(state: OverlayState) {
     val current = state.current
     BackHandler(enabled = current != null) { state.dismiss() }
     Box(Modifier.fillMaxSize()) {
+        UndoBar(state)
         AnimatedVisibility(
             visible = current != null,
             enter = fadeIn(Motion.panel()),
@@ -126,6 +141,40 @@ fun OverlayHost(state: OverlayState) {
                     if (overlay.isSheet) SheetSurface(state::dismiss) { overlay.content(state::dismiss) }
                     else DialogSurface { overlay.content(state::dismiss) }
                 }
+            }
+        }
+    }
+}
+
+private const val UNDO_VISIBLE_MS = 2_000L
+
+@Composable
+private fun UndoBar(state: OverlayState) {
+    val notice = state.undo
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            kotlinx.coroutines.delay(UNDO_VISIBLE_MS)
+            state.clearUndo(notice)
+        }
+    }
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars), contentAlignment = Alignment.BottomCenter) {
+        AnimatedVisibility(visible = notice != null, enter = fadeIn(Motion.ui()), exit = fadeOut(Motion.ui())) {
+            // Keep the last notice on screen while it fades out.
+            val shown = remember { mutableStateOf(notice) }
+            if (notice != null) shown.value = notice
+            val text = shown.value ?: return@AnimatedVisibility
+            Row(
+                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp)).background(KColors.SurfaceRaised)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(text.message, color = KColors.White, fontSize = 15.sp)
+                Text(
+                    "취소하기", color = KColors.Sage, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { state.clearUndo(text); text.onUndo() }.padding(start = 16.dp),
+                )
             }
         }
     }

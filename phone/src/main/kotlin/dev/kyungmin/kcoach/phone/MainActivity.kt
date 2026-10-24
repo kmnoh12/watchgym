@@ -37,6 +37,7 @@ import dev.kyungmin.kcoach.phone.ui.LibraryEntry
 import dev.kyungmin.kcoach.phone.ui.LibraryScreen
 import dev.kyungmin.kcoach.phone.ui.Overlay
 import dev.kyungmin.kcoach.phone.ui.OverlayHost
+import dev.kyungmin.kcoach.phone.ui.UndoNotice
 import dev.kyungmin.kcoach.phone.ui.OverlayState
 import dev.kyungmin.kcoach.phone.ui.PickDialog
 import dev.kyungmin.kcoach.phone.ui.SheetItem
@@ -2395,7 +2396,7 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Trash, "운동 삭제", destructive = true) {
                         dismiss()
-                        confirmRemoveExercise(workout.routine, pageIndex, workout) { showActiveWorkout(forceRebuild = true) }
+                        removeExerciseWithUndo(workout.routine, pageIndex, workout) { showActiveWorkout(forceRebuild = true) }
                     },
                 ) + if (history.last(routineExercise.exercise.id) != null && routineExercise.sets.none { it.completed }) listOf(
                     SheetItem(KIcon.Reload, "지난 세트 불러오기") {
@@ -2728,7 +2729,7 @@ class MainActivity : ComponentActivity() {
                 listOf(
                     SheetItem(KIcon.Play, "운동 애니메이션") { dismiss(); showExerciseInfo(exercise, onReturn) },
                     SheetItem(KIcon.Info, "운동 정보", featured = true) { dismiss(); showExerciseInfo(exercise, onReturn) },
-                    SheetItem(KIcon.Trash, "운동 삭제", destructive = true) { dismiss(); confirmRemoveExercise(routine, index, active, onReturn) },
+                    SheetItem(KIcon.Trash, "운동 삭제", destructive = true) { dismiss(); removeExerciseWithUndo(routine, index, active, onReturn) },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) { dismiss(); showExerciseAlternatives(routine, index, onReturn) },
                 ),
             )
@@ -2805,30 +2806,36 @@ class MainActivity : ComponentActivity() {
         if (persistActiveWorkout(workout)) resyncActiveWorkoutToWatch(workout)
     }
 
-    private fun confirmRemoveExercise(routine: WorkoutRoutine, index: Int, active: ActiveWorkout?, onReturn: () -> Unit) {
+    private fun removeExerciseWithUndo(routine: WorkoutRoutine, index: Int, active: ActiveWorkout?, onReturn: () -> Unit) {
         val exercise = routine.exercises.getOrNull(index)?.exercise ?: return
         if (activeWorkout?.routine === routine) {
             if (routine.exercises.size <= 1) return Toast.makeText(this, "운동이 하나뿐이라 삭제할 수 없어요", Toast.LENGTH_SHORT).show()
             if (routine.exercises[index].sets.any { it.completed }) return Toast.makeText(this, "완료한 세트가 있는 운동은 삭제할 수 없어요", Toast.LENGTH_SHORT).show()
         }
-        showPopup { dismiss ->
-            ConfirmDialog("${exercise.name} 삭제", "이 루틴에서 운동을 삭제할까요?", "취소", "삭제", dismiss) {
-                if (index !in routine.exercises.indices) { dismiss(); return@ConfirmDialog }
-                routine.exercises.removeAt(index)
-                active?.let {
-                    if (it.routine === routine) {
-                        val removedCurrent = it.exerciseIndex == index
-                        if (it.exerciseIndex > index) it.exerciseIndex -= 1
-                        else if (it.exerciseIndex >= routine.exercises.size) it.exerciseIndex = max(0, routine.exercises.lastIndex)
-                        if (removedCurrent) it.setIndex = 0
-                    }
-                }
-                if (routines.any { it === routine }) saveRoutineLibrary()
-                commitRunningRoutineEdit(routine)
-                Toast.makeText(this, "운동을 삭제했어요", Toast.LENGTH_SHORT).show()
-                onReturn()
+        // No "are you sure": remove right away and leave a short window to take it back.
+        val removed = routine.exercises[index]
+        val activeIndexes = active?.takeIf { it.routine === routine }?.let { Triple(it, it.exerciseIndex, it.setIndex) }
+        routine.exercises.removeAt(index)
+        active?.let {
+            if (it.routine === routine) {
+                val removedCurrent = it.exerciseIndex == index
+                if (it.exerciseIndex > index) it.exerciseIndex -= 1
+                else if (it.exerciseIndex >= routine.exercises.size) it.exerciseIndex = max(0, routine.exercises.lastIndex)
+                if (removedCurrent) it.setIndex = 0
             }
         }
+        if (routines.any { it === routine }) saveRoutineLibrary()
+        commitRunningRoutineEdit(routine)
+        overlays.showUndo(UndoNotice("${exercise.name}을(를) 삭제했어요") {
+            routine.exercises.add(index.coerceAtMost(routine.exercises.size), removed)
+            activeIndexes?.let { (workout, exerciseIndex, setIndex) ->
+                if (activeWorkout === workout) { workout.exerciseIndex = exerciseIndex; workout.setIndex = setIndex }
+            }
+            if (routines.any { it === routine }) saveRoutineLibrary()
+            commitRunningRoutineEdit(routine)
+            onReturn()
+        })
+        onReturn()
     }
 
     private fun showExerciseAlternatives(routine: WorkoutRoutine, index: Int, onReturn: () -> Unit) {
