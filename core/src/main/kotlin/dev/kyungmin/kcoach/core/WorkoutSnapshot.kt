@@ -48,6 +48,7 @@ data class PlannedSetSnapshot(
     val setId: String = "",
     val attemptId: String = "",
     val identityRequired: Boolean = false,
+    val unilateral: UnilateralProgress? = UnilateralExercises.initial(exerciseId, completed),
 )
 
 data class WorkoutSnapshot(
@@ -106,7 +107,7 @@ data class WorkoutSnapshot(
     }
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 7
+        const val CURRENT_SCHEMA_VERSION = 8
         internal const val MAX_COLLECTION_SIZE = 10_000
     }
 }
@@ -146,6 +147,7 @@ object WorkoutSnapshotCodec {
                 data.writeString(set.pattern); data.writeString(set.family); data.writeString(set.gripType)
                 data.writeBoolean(set.rpe != null); set.rpe?.let { data.writeString(it) }
                 data.writeString(set.setId); data.writeString(set.attemptId); data.writeBoolean(set.identityRequired)
+                data.writeString(set.unilateral?.encode().orEmpty())
             }
             data.writeInt(snapshot.performedReps.size)
             snapshot.performedReps.toSortedMap().forEach { (exerciseId, reps) ->
@@ -213,7 +215,7 @@ object WorkoutSnapshotCodec {
                     setId = if (schemaVersion >= 6) data.readString() else "",
                     attemptId = if (schemaVersion >= 6) data.readString() else "",
                     identityRequired = schemaVersion >= 6 && data.readBoolean(),
-                )
+                ).let { set -> if (schemaVersion >= 8) set.copy(unilateral = UnilateralProgress.decode(data.readString())) else set }
             }
             val performedReps = buildMap {
                 repeat(data.readCount("performed reps")) {

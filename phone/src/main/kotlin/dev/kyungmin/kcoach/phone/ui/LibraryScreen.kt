@@ -68,7 +68,7 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** One exercise plus where it sits in the browse tree. */
-class LibraryEntry(val exercise: ExerciseDefinition, val sectionOrder: Int, val sectionTitle: String, val bodyRank: Int)
+class LibraryEntry(val exercise: ExerciseDefinition, val sectionOrder: Int, val sectionTitle: String, val bodyRank: Int, val body: String = exercise.bodyCategory)
 
 class LibraryActions(
     val back: () -> Unit,
@@ -131,10 +131,20 @@ fun ExerciseBrowser(
     val listState = rememberLazyListState()
     fun isFavorite(item: ExerciseDefinition) = if (favorites != null) item.id in favorites.ids else item.favorite
 
-    val filtered = catalog.filter { entry ->
+    val shown = remember(catalog) {
+        catalog.flatMap { e ->
+            dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodies(e.exercise.bodyCategory, e.exercise.pattern).map { b ->
+                if (b == e.exercise.bodyCategory) e else {
+                    val (order, title) = dev.kyungmin.kcoach.core.ExerciseTaxonomy.section(b, e.exercise.pattern)
+                    LibraryEntry(e.exercise, order, title, dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyRank(b), b)
+                }
+            }
+        }
+    }
+    val filtered = shown.filter { entry ->
         val item = entry.exercise
         (query.isBlank() || item.name.contains(query, ignoreCase = true)) &&
-            (body == "전체" || item.bodyCategory == body) &&
+            (body == "전체" || entry.body == body) &&
             (equipment == "전체" || item.equipment == equipment) &&
             when (mode) {
                 "좋아하는" -> isFavorite(item)
@@ -145,7 +155,7 @@ fun ExerciseBrowser(
     }
     val searching = query.isNotBlank()
     val rows = buildList<LibRow> {
-        filtered.groupBy { it.exercise.bodyCategory }
+        filtered.groupBy { it.body }
             .toList()
             .sortedBy { (_, entries) -> entries.first().bodyRank }
             .forEach { (bodyName, inBody) ->

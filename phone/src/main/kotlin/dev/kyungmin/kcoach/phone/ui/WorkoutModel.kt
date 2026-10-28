@@ -19,6 +19,8 @@ data class WorkoutUiModel(
     val restingSet: Pair<Int, Int>? = null,
     /** A record the just-finished set broke; the screen shows it briefly. */
     val recordBanner: RecordBannerUi? = null,
+    /** Swipe a set row left to reveal its delete button. */
+    val swipeDelete: Boolean = true,
 )
 
 data class ExerciseUi(

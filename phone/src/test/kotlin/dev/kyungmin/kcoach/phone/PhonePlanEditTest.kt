@@ -44,7 +44,7 @@ class PhonePlanEditTest {
         assertEquals(before.restEndAtMs, saved.restEndAtMs)
     }
 
-    @Test fun removeAndUndoPreserveCurrentSetIdentityAndRestRevision() {
+    @Test fun removeAndUndoPreserveCurrentSetIdentityAndAdvanceRestRevision() {
         val (store, before) = seed()
         val controller = PhoneSessionController(store) { _, _ -> }
         val removed = controller.editPlan({ before }, PhonePlanEdit.RemoveSet(0, 0)).getOrThrow().snapshot
@@ -54,7 +54,8 @@ class PhonePlanEditTest {
         val restored = controller.editPlan({ removed }, PhonePlanEdit.RestoreSet(before.plannedSets[0])).getOrThrow().snapshot
         assertEquals(before.plannedSets, restored.plannedSets)
         assertEquals(before.setIndex, restored.setIndex)
-        assertEquals(before.restRev, restored.restRev)
+        assertTrue(restored.restRev > removed.restRev)
+        assertEquals(before.restEndAtMs, restored.restEndAtMs)
     }
 
     @Test fun changingNextSetDuringRestReturnsCommittedRestVersion() {
@@ -81,21 +82,41 @@ class PhonePlanEditTest {
         assertEquals(before.restEndAtMs + 15_000, adjusted.restEndAtMs)
     }
 
-    @Test fun staleRevisionRejectsEveryIntentWithoutSendingOrOverwriting() {
-        val (store, before) = seed()
+    @Test fun aBackgroundCompletionIsPreservedWhenAnOlderScreenAddsASet() {
+        val (store, seed) = seed()
+        check(store.saveActive(seed.copy(setIndex = 0, phase = WorkoutPhase.WORKING, restEndAtMs = 0)))
+        val before = store.loadActive().getOrThrow()!!
+        val first = before.plannedSets.first()
         val service = SessionStore(app)
-        val newest = service.loadActive().getOrThrow()!!.copy(lastSequence = 7)
-        check(service.saveActive(newest))
+        val result = service.completeWatchSet(SetCompletionEvent(before.sessionId, first.exerciseId, first.setIndex,
+            8, 0, 7, setId = first.setId, attemptId = first.attemptId), 1000).getOrThrow() as SetCompletionResult.Applied
         var sends = 0
-        val controller = PhoneSessionController(store) { _, _ -> sends++ }
-        val edits = listOf(PhonePlanEdit.AddSet(0), PhonePlanEdit.RemoveSet(0, 0),
-            PhonePlanEdit.RestoreSet(before.plannedSets[0].copy(setId = "restore")),
-            PhonePlanEdit.SetRest(0, 0, 60), PhonePlanEdit.ExerciseRest(0, 120))
-        edits.forEach {
-            assertTrue(controller.editPlan({ before }, it).isFailure)
-            assertEquals(newest, SessionStore(app).loadActive().getOrThrow())
-        }
-        assertEquals(0, sends)
+        val edited = PhoneSessionController(store) { _, _ -> sends++ }
+            .editPlan({ before }, PhonePlanEdit.AddSet(0)).getOrThrow().snapshot
+        assertEquals(1, sends)
+        assertEquals(4, edited.plannedSets.size)
+        assertEquals(result.snapshot.plannedSets.first(), edited.plannedSets.first())
+        assertEquals(result.snapshot.performedReps, edited.performedReps)
+        assertEquals(result.snapshot.restEndAtMs, edited.restEndAtMs)
+        assertEquals(result.snapshot.lastSequence, edited.lastSequence)
+    }
+
+    @Test fun anOlderScreenEditsTheSameExerciseAfterReorderingAndRejectsRemovedTargets() {
+        val (store, seed) = seed()
+        val other = seed.plannedSets.first().copy(exerciseIndex = 1, exerciseId = "other", setId = "other-set", attemptId = "other-attempt")
+        check(store.saveActive(seed.copy(plannedSets = seed.plannedSets + other)))
+        val before = store.loadActive().getOrThrow()!!
+        val service = SessionStore(app)
+        val latest = service.loadActive().getOrThrow()!!
+        check(service.saveActive(latest.copy(exerciseIndex = 1, plannedSets = listOf(other.copy(exerciseIndex = 0)) +
+            latest.plannedSets.filter { it.exerciseIndex == 0 }.map { it.copy(exerciseIndex = 1) })))
+        val controller = PhoneSessionController(store) { _, _ -> }
+        val edited = controller.editPlan({ before }, PhonePlanEdit.AddSet(0)).getOrThrow().snapshot
+        assertEquals(1, edited.plannedSets.count { it.exerciseId == "other" })
+        assertEquals(4, edited.plannedSets.count { it.exerciseId == "curl" })
+        val removed = controller.editPlan({ edited }, PhonePlanEdit.RemoveSet(1, 0)).getOrThrow().snapshot
+        assertTrue(controller.editPlan({ before }, PhonePlanEdit.DuplicateSet(0, 0)).isFailure)
+        assertEquals(removed, store.loadActive().getOrThrow())
     }
 
     @Test fun invalidCandidateAndInvalidIntentCannotSaveOrSend() {
@@ -128,6 +149,69 @@ class PhonePlanEditTest {
         app.getSharedPreferences("calibration-captures", 0).edit().putString("active", "busy").commit()
         assertTrue(controller.editPlan({ single }, PhonePlanEdit.AddSet(0)).isFailure)
         assertEquals(committed, store.loadActive().getOrThrow())
+    }
+
+    @Test fun duplicateDuringRestSchedulesFreshCopyAndPreservesDeadlineAndRecordedSource() {
+        val (store, seed) = seed()
+        val source = seed.plannedSets[0].copy(completed = true, performedReps = 8,
+            repSource = SetRepSource.MANUAL, rpe = "9", setType = "DROP", gripType = "뉴트럴")
+        check(store.saveActive(seed.copy(plannedSets = listOf(source) + seed.plannedSets.drop(1),
+            performedReps = mapOf("curl" to 8), lastCompletedSetKey = SetIdentity.completionKey(seed.sessionId, source))))
+        val before = store.loadActive().getOrThrow()!!
+        var sends = 0
+        val saved = PhoneSessionController(store) { _, _ ->
+            sends++
+            assertEquals(4, SessionStore(app).loadActive().getOrThrow()!!.plannedSets.size)
+        }.editPlan({ before }, PhonePlanEdit.DuplicateSet(0, 0)).getOrThrow().snapshot
+        val copy = saved.plannedSets[1]
+        assertEquals(source, saved.plannedSets[0])
+        assertEquals(source.weightKg, copy.weightKg)
+        assertEquals(source.targetReps, copy.targetReps)
+        assertEquals(source.setType, copy.setType)
+        assertEquals(source.gripType, copy.gripType)
+        assertEquals(source.restOverrideSeconds, copy.restOverrideSeconds)
+        assertFalse(copy.completed)
+        assertNull(copy.performedReps)
+        assertNull(copy.repSource)
+        assertNull(copy.rpe)
+        assertNotEquals(source.setId, copy.setId)
+        assertNotEquals(source.attemptId, copy.attemptId)
+        assertEquals(copy.setId, WorkoutSessionReducer.nextPendingSet(saved)!!.setId)
+        assertEquals(before.lastCompletedSetKey, saved.lastCompletedSetKey)
+        assertEquals(before.performedReps, saved.performedReps)
+        assertEquals(before.restEndAtMs, saved.restEndAtMs)
+        assertEquals(1, sends)
+    }
+
+    @Test fun duplicateBeforeWorkingCursorKeepsMeasuringAttemptEvenWhenPaused() {
+        val (store, seed) = seed()
+        val controller = PhoneSessionController(store) { _, _ -> }
+        for (paused in listOf(false, true)) {
+            val working = seed.copy(phase = if (paused) WorkoutPhase.PAUSED else WorkoutPhase.WORKING,
+                restEndAtMs = 0, paused = paused, pausedSinceMs = if (paused) 10 else 0)
+            check(store.saveActive(working))
+            val before = store.loadActive().getOrThrow()!!
+            val saved = controller.editPlan({ before }, PhonePlanEdit.DuplicateSet(0, 0)).getOrThrow().snapshot
+            assertEquals(2, saved.setIndex)
+            assertEquals(before.plannedSets[1].setId, WorkoutSessionReducer.nextPendingSet(saved)!!.setId)
+            assertEquals(before.plannedSets[1].attemptId, WorkoutSessionReducer.nextPendingSet(saved)!!.attemptId)
+            assertEquals(paused, saved.paused)
+        }
+    }
+
+    @Test fun addingAfterTheLastCompletedSetCanCompleteTheAdvertisedNextAttempt() {
+        val (store, seed) = seed()
+        val finished = seed.plannedSets.first().copy(completed = true, performedReps = 10, repSource = SetRepSource.WATCH)
+        check(store.saveActive(seed.copy(setIndex = 0, plannedSets = listOf(finished),
+            phase = WorkoutPhase.WORKING, restEndAtMs = 0, performedReps = mapOf("curl" to 10),
+            lastCompletedSetKey = SetIdentity.completionKey(seed.sessionId, finished))))
+        val before = store.loadActive().getOrThrow()!!
+        val controller = PhoneSessionController(store) { _, _ -> }
+        val added = controller.editPlan({ before }, PhonePlanEdit.AddSet(0)).getOrThrow().snapshot
+        val next = WorkoutSessionReducer.nextPendingSet(added)!!
+        val result = store.completeWatchSet(SetCompletionEvent(added.sessionId, next.exerciseId, next.setIndex, 10, 0, 0,
+            setId = next.setId, attemptId = next.attemptId), 1000).getOrThrow()
+        assertTrue("the exact next attempt sent to the wrist must be completable: $result", result is SetCompletionResult.Applied)
     }
 
 }

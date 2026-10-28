@@ -27,7 +27,7 @@ class PhoneServiceHardeningTest {
         assertNotNull(pending)
 
         // The same set/attempt identity cannot be reused for a different exercise after a replacement.
-        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫 풀 다운", 0, 8, 5.0, 60,
+        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫풀다운", 0, 8, 5.0, 60,
             setId = "set-1", attemptId = "attempt-1")
         assertFalse(PhoneWorkoutService.send(app, WearSync.PATH_COMMAND, stale))
         assertEquals("A rejected replacement must not overwrite the durable command", pending, PhoneCommandOutbox(app).pending())
@@ -37,7 +37,7 @@ class PhoneServiceHardeningTest {
         WorkoutWearingStore(app).beginSession("hardening-session",
             WorkoutWearingSelection("LEFT", "OUTSIDE")).getOrThrow()
         PhoneWorkoutService.send(app, WearSync.PATH_COMMAND, startCommand())
-        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫 풀 다운", 0, 8, 5.0, 60,
+        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫풀다운", 0, 8, 5.0, 60,
             setId = "set-1", attemptId = "attempt-1")
         val controller = Robolectric.buildService(PhoneWorkoutService::class.java).create()
         try {
@@ -55,7 +55,7 @@ class PhoneServiceHardeningTest {
             WorkoutWearingSelection("LEFT", "OUTSIDE")).getOrThrow()
         PhoneWorkoutService.send(app, WearSync.PATH_COMMAND, startCommand())
         val pending = PhoneCommandOutbox(app).pending()
-        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫 풀 다운", 0, 8, 5.0, 60,
+        val stale = WearSync.richCommand("SET", "hardening-session", "lat_pull_down", "랫풀다운", 0, 8, 5.0, 60,
             setId = "set-1", attemptId = "attempt-1")
         val bridge = PhoneWearBridge(app)
         try { bridge.sendRaw(WearSync.PATH_COMMAND, stale) } finally { bridge.close() }

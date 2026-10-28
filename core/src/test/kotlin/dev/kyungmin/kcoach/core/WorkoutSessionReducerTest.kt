@@ -97,6 +97,20 @@ class WorkoutSessionReducerTest {
         // A workout paused during a set (no rest left) is not a rest and cannot be skipped.
         assertEquals(null, WorkoutSessionReducer.advanceAfterRest(pausedRest.copy(pausedRestRemainingMs = 0L), 25_000L, skip = true))
     }
+    @Test fun completionMatchesTheAdvertisedPendingAttemptAcrossAFinishedCursor() {
+        val base = snapshot()
+        val finished = base.plannedSets.first().copy(completed = true, performedReps = 10)
+        val next = finished.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", completed = false, performedReps = null)
+        val pending = base.copy(plannedSets = listOf(finished, next))
+        val applied = assertIs<SetCompletionResult.Applied>(WorkoutSessionReducer.completeSet(pending,
+            event.copy(exerciseId = next.exerciseId)))
+        assertEquals(1, applied.snapshot.exerciseIndex)
+        assertEquals(true, applied.snapshot.plannedSets.last().completed)
+        val outOfOrder = assertIs<SetCompletionResult.Rejected>(WorkoutSessionReducer.completeSet(base,
+            event.copy(setIndex = 1)))
+        assertEquals("out_of_order_set", outOfOrder.reason)
+    }
+
 }
 
 class ManualRepEditPrecedenceTest {

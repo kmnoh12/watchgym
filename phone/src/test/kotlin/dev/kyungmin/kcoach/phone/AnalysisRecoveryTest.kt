@@ -187,7 +187,7 @@ class AnalysisRecoveryTest {
         assertTrue(rows.contains("자동 추정 횟수" to "9회"))
         assertFalse(rows.any { it.first.contains("범위") || it.first.contains("신뢰도") || it.first.contains("확정") })
         assertFalse(legacy.copy(trackingMode = "MANUAL_REQUIRED").resultMetricRows().any { it.first == "분석 점수" })
-        val mixed = legacy.copy(exerciseId = "lat_pull_down", exerciseName = "랫 풀 다운", wristMotionSpeed = 2.0)
+        val mixed = legacy.copy(exerciseId = "lat_pull_down", exerciseName = "랫풀다운", wristMotionSpeed = 2.0)
         assertFalse(mixed.resultMetricRows().any { it.first == "손목 관측 속도" })
         assertTrue(ANALYSIS_ESTIMATE_NOTE.contains("정답 확률이 아니에요"))
     }

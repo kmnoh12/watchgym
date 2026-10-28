@@ -19,9 +19,9 @@ object StartWristOrientationPolicy {
         val id = ExerciseMotionCatalog.normalizeExerciseId(exerciseId)
         if (ExerciseTrackingProfiles.resolve(id).mode == TrackingMode.MANUAL_REQUIRED) return StartWristCandidate.MANUAL
         return when (id) {
-            "external_rotation" -> StartWristCandidate.HORIZONTAL_PALM_UP
+            "external_rotation", "single_arm_cable_external_rotation" -> StartWristCandidate.HORIZONTAL_PALM_UP
             "crossover_reverse_fly" -> StartWristCandidate.HORIZONTAL_KNUCKLES_UP
-            "dumbbell_lateral_raise" -> StartWristCandidate.ARM_DOWN
+            "dumbbell_lateral_raise", "single_arm_dumbbell_lateral_raise" -> StartWristCandidate.ARM_DOWN
             else -> StartWristCandidate.DEFERRED
         }
     }

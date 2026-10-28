@@ -21,7 +21,7 @@ class SetEndGate(private val silenceNs: Long = 3_000_000_000L) {
         if (closed) return true
         val last = lastRepNs ?: return false
         val anchor = maxOf(last, lastMotionNs ?: 0L)
-        val deadline = anchor + maxOf(silenceNs, minimumWaitNs)
+        val deadline = anchor + minimumWaitNs
         if (nowNs < deadline) return false
         if (candidateStartNs != null && candidateStartNs > anchor && candidateStartNs < deadline &&
             nowNs - candidateStartNs < maximumRepNs) return false
@@ -33,8 +33,18 @@ class SetEndGate(private val silenceNs: Long = 3_000_000_000L) {
         /** Before the target is reached a pause is usually a hard set catching its breath, so the set stays open this long. */
         const val PAUSE_BEFORE_TARGET_NS = 7_000_000_000L
 
-        /** How long without a rep ends the set: the longer mid-set pause until [targetReps] is reached, then [baseWaitNs] as before. */
-        fun waitNs(reps: Int, targetReps: Int, baseWaitNs: Long): Long =
-            if (reps < targetReps) maxOf(baseWaitNs, PAUSE_BEFORE_TARGET_NS) else baseWaitNs
+        /** Landing exactly on the planned reps: the lifter is done, so a short stillness closes the set. */
+        const val TARGET_HIT_WAIT_NS = 1_500_000_000L
+
+        /**
+         * How long without a rep ends the set: the longer mid-set pause until [targetReps] is reached,
+         * a short one on exactly the target, and [baseWaitNs] once the lifter keeps going past it.
+         */
+        fun waitNs(reps: Int, targetReps: Int, baseWaitNs: Long): Long = when {
+            targetReps <= 0 -> baseWaitNs
+            reps < targetReps -> maxOf(baseWaitNs, PAUSE_BEFORE_TARGET_NS)
+            reps == targetReps -> TARGET_HIT_WAIT_NS
+            else -> baseWaitNs
+        }
     }
 }

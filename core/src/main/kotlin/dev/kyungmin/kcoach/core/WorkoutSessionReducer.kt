@@ -66,8 +66,23 @@ object WorkoutSessionReducer {
         if (completedSet.completed) return SetCompletionResult.Duplicate(snapshot)
         if (snapshot.lastCompletedSetKey == completionKey) return SetCompletionResult.Duplicate(snapshot)
         if (event.sequence > 0L && event.sequence <= snapshot.lastSequence) return SetCompletionResult.Rejected(snapshot, "stale_sequence")
-        if (completedSet.exerciseIndex != snapshot.exerciseIndex) return SetCompletionResult.Rejected(snapshot, "wrong_exercise")
-        if (completedSet.setIndex != snapshot.setIndex) return SetCompletionResult.Rejected(snapshot, "out_of_order_set")
+        // Commands advertise nextPendingSet, which can differ from a saturated cursor after
+        // appending to a completed exercise. Accept exactly that attempt, never an arbitrary future set.
+        val scheduled = nextPendingSet(snapshot)
+        if (completedSet.exerciseIndex != scheduled?.exerciseIndex) return SetCompletionResult.Rejected(snapshot, "wrong_exercise")
+        if (completedSet.setIndex != scheduled.setIndex) return SetCompletionResult.Rejected(snapshot, "out_of_order_set")
+        val unilateral = completedSet.unilateral
+        if (unilateral?.holdsRest == true) return SetCompletionResult.Duplicate(snapshot)
+        if (unilateral?.stage == UnilateralStage.WATCH_SIDE_WORKING) {
+            if (event.reps > 9_999) return SetCompletionResult.Rejected(snapshot, "invalid_unilateral_reps")
+            return SetCompletionResult.Applied(snapshot.copy(
+                exerciseIndex = completedSet.exerciseIndex,
+                setIndex = completedSet.setIndex,
+                plannedSets = snapshot.plannedSets.map { if (it === completedSet) it.copy(
+                    unilateral = UnilateralProgress(UnilateralStage.AWAITING_OTHER_SIDE, event.reps, event.repSource)) else it },
+                restEndAtMs = 0, pausedRestRemainingMs = 0,
+                lastSequence = maxOf(snapshot.lastSequence, event.sequence)))
+        }
         val matchingSets = snapshot.plannedSets.filter { it.exerciseIndex == completedSet.exerciseIndex }
         val updatedSets = snapshot.plannedSets.map { set ->
             if (set === completedSet) {
@@ -86,6 +101,7 @@ object WorkoutSessionReducer {
         }
         return SetCompletionResult.Applied(
             snapshot.copy(
+                exerciseIndex = completedSet.exerciseIndex,
                 setIndex = (completedSet.setIndex + 1).coerceAtMost(maxSetIndex),
                 plannedSets = updatedSets,
                 performedReps = updatedReps,
@@ -100,12 +116,13 @@ object WorkoutSessionReducer {
     }
     /** Confirmed native analysis replaces a watch estimate, never an explicit manual entry. */
     fun confirmReps(snapshot: WorkoutSnapshot, exerciseId: String, setIndex: Int, reps: Int?, setId: String = "", attemptId: String = ""): WorkoutSnapshot {
-        if (reps == null || reps < 0) return snapshot
-        val set = SetIdentity.resolve(snapshot, exerciseId, setIndex, setId, attemptId)?.takeIf { it.completed }
+        if (reps == null || reps !in 0..9_999) return snapshot
+        val set = SetIdentity.resolve(snapshot, exerciseId, setIndex, setId, attemptId)?.takeIf { it.completed || it.unilateral?.holdsRest == true }
             ?: return snapshot
-        if (set.repSource == SetRepSource.MANUAL) return snapshot
+        if (set.repSource == SetRepSource.MANUAL || set.unilateral?.watchRepSource == SetRepSource.MANUAL) return snapshot
         val updated = snapshot.plannedSets.map {
-            if (it === set) it.copy(performedReps = reps, repSource = SetRepSource.PHONE_ANALYSIS) else it
+            if (it === set) it.copy(performedReps = if (it.completed) reps else null, repSource = if (it.completed) SetRepSource.PHONE_ANALYSIS else null,
+                unilateral = it.unilateral?.copy(watchReps = reps, watchRepSource = SetRepSource.PHONE_ANALYSIS)) else it
         }
         return snapshot.copy(plannedSets = updated, performedReps = updated.filter { it.completed }
             .groupBy { it.exerciseId }.mapValues { (_, sets) -> sets.sumOf { it.performedReps ?: 0 } })

@@ -91,10 +91,12 @@ fun ExerciseInfoScreen(info: ExerciseInfoUi, back: () -> Unit, animation: (heigh
                     }
                     else -> {
                         MetricGrid(info.stats)
-                        Spacer(Modifier.height(20.dp))
-                        Text("분석 메모", color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(8.dp))
-                        InfoText(info.analysisNote)
+                        if (info.analysisNote.isNotBlank()) {
+                            Spacer(Modifier.height(20.dp))
+                            Text("분석 메모", color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(8.dp))
+                            InfoText(info.analysisNote)
+                        }
                     }
                 }
             }

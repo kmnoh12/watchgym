@@ -31,5 +31,12 @@ object ExerciseTaxonomy {
         return if (index >= 0) index to list[index].second else OTHER_ORDER to OTHER_TITLE
     }
 
+    /** Movements that count as a main exercise for two body parts and are listed under both. */
+    private val sharedBodies = mapOf("dip" to listOf("가슴", "삼두"), "pullover" to listOf("가슴", "등"))
+
+    /** Every body part an exercise is listed under, its own first. */
+    fun bodies(bodyCategory: String, pattern: String): List<String> =
+        listOf(bodyCategory) + sharedBodies[pattern].orEmpty().filter { it != bodyCategory }
+
     fun bodyRank(bodyCategory: String): Int = bodyOrder.indexOf(bodyCategory).let { if (it < 0) bodyOrder.size else it }
 }

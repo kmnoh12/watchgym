@@ -96,7 +96,12 @@ class SessionStore(private val context: Context) {
                     val requiredPhase = if (editingCurrent) WorkoutPhase.WORKING else WorkoutPhase.RESTING
                     val restControl = command.action != WatchWorkoutAction.EDIT_SET
                     val resting = current?.phase == WorkoutPhase.RESTING || current?.let { it.paused && it.pausedRestRemainingMs > 0 } == true
-                    if (current?.sessionId != command.sessionId || (if (restControl) !resting else current.phase != requiredPhase || current.paused))
+                    // Rest expiry and a wrist pause can cross in transit. Apply that intent to the
+                    // same next attempt instead of rejecting it just because the timer won the race.
+                    val boundaryPause = restControl && command.action in setOf(WatchWorkoutAction.REST_PAUSE, WatchWorkoutAction.REST_RESUME) &&
+                        current?.lastCompletedSetKey != null && current.restEndAtMs == 0L && current.pausedRestRemainingMs == 0L &&
+                        current.phase in setOf(WorkoutPhase.WORKING, WorkoutPhase.PAUSED)
+                    if (current?.sessionId != command.sessionId || (if (restControl) !resting && !boundaryPause else current.phase != requiredPhase || current.paused))
                         return@runCatching rejected(WatchWorkoutControlStatus.STALE)
                     if (restControl && command.seq <= current.watchRestSeq) return@runCatching rejected(WatchWorkoutControlStatus.STALE)
                     val target = WorkoutSessionReducer.nextPendingSet(current)
@@ -114,8 +119,12 @@ class SessionStore(private val context: Context) {
                         val sets = current.plannedSets
                         val pause = command.action == WatchWorkoutAction.REST_PAUSE ||
                             command.action == WatchWorkoutAction.REST_ADJUST && command.pausedRestRemainingMs != null
-                        val remaining = command.pausedRestRemainingMs?.coerceIn(0, 1_800_000L) ?: 0L
-                        current.copy(plannedSets = sets, watchRestSeq = command.seq,
+                        val remaining = if (pause) (command.pausedRestRemainingMs ?: 0L).coerceIn(1, 1_800_000L) else 0L
+                        if (boundaryPause) current.copy(watchRestSeq = command.seq, paused = pause,
+                            phase = if (pause) WorkoutPhase.PAUSED else WorkoutPhase.WORKING,
+                            pausedSinceMs = if (pause) current.pausedSinceMs.takeIf { current.paused } ?: nowMs else 0,
+                            totalPausedMs = current.totalPausedMs + if (current.paused && !pause) (nowMs - current.pausedSinceMs).coerceAtLeast(0) else 0)
+                        else current.copy(plannedSets = sets, watchRestSeq = command.seq,
                             restEndAtMs = if (pause) 0 else requireNotNull(command.restEndAtMs).coerceIn(0, nowMs + 1_800_000L),
                             paused = pause, pausedRestRemainingMs = if (pause) remaining else 0,
                             phase = if (pause) WorkoutPhase.PAUSED else WorkoutPhase.RESTING,
@@ -130,11 +139,23 @@ class SessionStore(private val context: Context) {
                                 weightKg = command.weightKg ?: set.weightKg,
                                 targetReps = if (!set.completed && command.reps >= 0) command.reps else set.targetReps,
                                 performedReps = if (set.completed && command.reps >= 0) command.reps else set.performedReps,
-                                repSource = if (set.completed && command.reps >= 0) SetRepSource.MANUAL else set.repSource)
+                                repSource = if (set.completed && command.reps >= 0) SetRepSource.MANUAL else set.repSource,
+                                unilateral = if (set.completed && command.reps >= 0) set.unilateral?.copy(
+                                    watchReps = command.reps, watchRepSource = SetRepSource.MANUAL) else set.unilateral)
                         }
                         current.copy(plannedSets = sets, performedReps = if (editingCurrent) current.performedReps else
                             sets.filter { it.completed }.groupBy { it.exerciseId }
                                 .mapValues { (_, values) -> values.sumOf { it.performedReps ?: 0 } })
+                    }
+                }
+                WatchWorkoutAction.START_OTHER_SIDE, WatchWorkoutAction.FINISH_WATCH_SIDE_ONLY, WatchWorkoutAction.COMPLETE_OTHER_SIDE -> {
+                    if (current == null) return@runCatching rejected(WatchWorkoutControlStatus.STALE)
+                    val result = UnilateralSetReducer.apply(current, command.sessionId, command.setId, command.attemptId,
+                        UnilateralAction.valueOf(command.action.name), nowMs, command.reps.takeIf { it >= 0 })
+                    when (result) {
+                        is SetCompletionResult.Applied -> result.snapshot
+                        is SetCompletionResult.Duplicate -> return@runCatching rejected(WatchWorkoutControlStatus.DUPLICATE)
+                        is SetCompletionResult.Rejected -> return@runCatching rejected(WatchWorkoutControlStatus.REJECTED)
                     }
                 }
                 WatchWorkoutAction.NEXT_SET -> {
@@ -172,7 +193,8 @@ class SessionStore(private val context: Context) {
         runCatching {
             val current = read()?.takeIf { it.sessionId == sessionId } ?: return@runCatching null
             if (current.paused == pause) return@runCatching current
-            val remaining = if (pause) (current.restEndAtMs - nowMs).coerceAtLeast(0) else current.pausedRestRemainingMs
+            val remaining = if (pause) (current.restEndAtMs - nowMs).coerceAtLeast(
+                if (current.phase == WorkoutPhase.RESTING) 1L else 0L) else current.pausedRestRemainingMs
             val next = current.copy(paused = pause,
                 phase = if (pause) WorkoutPhase.PAUSED else if (remaining > 0) WorkoutPhase.RESTING else WorkoutPhase.WORKING,
                 restEndAtMs = if (pause) 0 else if (remaining > 0) nowMs + remaining else 0,
@@ -219,7 +241,8 @@ class SessionStore(private val context: Context) {
             val restStarted: Boolean
             if (set.completed) {
                 val sets = current.plannedSets.map {
-                    if (it === set) it.copy(performedReps = command.performedReps, repSource = SetRepSource.MANUAL) else it
+                    if (it === set) it.copy(performedReps = command.performedReps, repSource = SetRepSource.MANUAL,
+                        unilateral = it.unilateral?.copy(watchReps = command.performedReps, watchRepSource = SetRepSource.MANUAL)) else it
                 }
                 next = current.copy(plannedSets = sets, performedReps = sets.filter { it.completed }
                     .groupBy { it.exerciseId }.mapValues { (_, values) -> values.sumOf { it.performedReps ?: 0 } })
@@ -228,13 +251,16 @@ class SessionStore(private val context: Context) {
                 if (command.operation != ManualSetOperation.COMPLETE || current.phase == WorkoutPhase.RESTING || current.pausedRestRemainingMs > 0)
                     return@runCatching answer(ManualSetStatus.REJECTED)
                 val restMs = Math.multiplyExact(set.restSeconds.toLong(), 1_000L)
-                val result = WorkoutSessionReducer.completeSet(current, SetCompletionEvent(command.sessionId,
+                val result = if (set.unilateral?.stage == UnilateralStage.OTHER_SIDE_WORKING)
+                    UnilateralSetReducer.apply(current, command.sessionId, command.setId, command.attemptId,
+                        UnilateralAction.COMPLETE_OTHER_SIDE, nowMs, command.performedReps)
+                else WorkoutSessionReducer.completeSet(current, SetCompletionEvent(command.sessionId,
                     command.exerciseId, command.setIndex, command.performedReps, Math.addExact(nowMs, restMs), 0,
                     SetRepSource.MANUAL, command.setId, command.attemptId))
                 if (result !is SetCompletionResult.Applied) return@runCatching answer(ManualSetStatus.REJECTED)
-                next = if (current.paused) result.snapshot.copy(paused = true, phase = WorkoutPhase.PAUSED,
+                next = if (current.paused && result.snapshot.phase == WorkoutPhase.RESTING) result.snapshot.copy(paused = true, phase = WorkoutPhase.PAUSED,
                     restEndAtMs = 0, pausedRestRemainingMs = restMs) else result.snapshot
-                restStarted = true
+                restStarted = result.snapshot.phase == WorkoutPhase.RESTING
             }
             check(commit(next, manualCommand = command)) { "Failed to commit manual set" }
             val updated = SetIdentity.resolve(next, command.exerciseId, command.setIndex, command.setId, command.attemptId)!!
@@ -321,7 +347,7 @@ class SessionStore(private val context: Context) {
 
     private fun complete(current: WorkoutSnapshot, event: SetCompletionEvent, completionId: String? = null, pausedRestMs: Long? = null): SetCompletionResult {
         val reduced = WorkoutSessionReducer.completeSet(current, event)
-        val result = if (reduced is SetCompletionResult.Applied && pausedRestMs != null) {
+        val result = if (reduced is SetCompletionResult.Applied && reduced.snapshot.phase == WorkoutPhase.RESTING && pausedRestMs != null) {
             reduced.copy(snapshot = reduced.snapshot.copy(paused = true, phase = WorkoutPhase.PAUSED, restEndAtMs = 0, pausedRestRemainingMs = pausedRestMs))
         } else reduced
         if (result is SetCompletionResult.Applied) check(commit(result.snapshot, completionId)) { "Failed to commit set completion snapshot" }
@@ -337,7 +363,8 @@ class SessionStore(private val context: Context) {
         val nextSetChanged = old != null && (candidate.restEndAtMs > 0 || candidate.pausedRestRemainingMs > 0) &&
             WorkoutSessionReducer.nextPendingSet(old)?.let { Triple(it.exerciseId, it.setId, it.attemptId) } !=
             WorkoutSessionReducer.nextPendingSet(candidate)?.let { Triple(it.exerciseId, it.setId, it.attemptId) }
-        val snapshot = candidate.copy(restRev = (old?.restRev ?: 0) + if (changed || nextSetChanged) 1 else 0,
+        val unilateralChanged = old != null && old.plannedSets.map { it.unilateral } != candidate.plannedSets.map { it.unilateral }
+        val snapshot = candidate.copy(restRev = (old?.restRev ?: 0) + if (changed || nextSetChanged || unilateralChanged) 1 else 0,
             watchRestSeq = maxOf(old?.watchRestSeq ?: 0, candidate.watchRestSeq))
         val revision = prefs.getLong(KEY_REVISION, 0) + 1
         val edit = prefs.edit().putString(KEY_ACTIVE_SNAPSHOT, WorkoutSnapshotCodec.encode(snapshot)).putLong(KEY_REVISION, revision)
@@ -354,7 +381,7 @@ class SessionStore(private val context: Context) {
                 it.setId == set.setId && it.attemptId == set.attemptId && it.exerciseId == set.exerciseId && it.setIndex == set.setIndex
             }
             val before = old?.let(::manualRevision) ?: 0L
-            val changed = set.repSource == SetRepSource.MANUAL && set.performedReps != null &&
+            val changed = old != null && old.unilateral != set.unilateral || set.repSource == SetRepSource.MANUAL && set.performedReps != null &&
                 (old?.repSource != SetRepSource.MANUAL || old.performedReps != set.performedReps)
             revisions.put(revisionKey(set), before + if (changed) 1 else 0)
         }

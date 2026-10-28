@@ -25,7 +25,7 @@ internal fun restoreWorkoutRoutine(snapshot: WorkoutSnapshot, template: WorkoutR
                 saved.gripType, saved.rpe, saved.restOverrideSeconds, saved.performedReps, saved.repSource,
                 setId = saved.setId.ifBlank { dev.kyungmin.kcoach.core.SetIdentity.migratedId(snapshot.sessionId, saved.exerciseIndex, saved.setIndex) },
                 attemptId = saved.attemptId.ifBlank { dev.kyungmin.kcoach.core.SetIdentity.migratedId(snapshot.sessionId, saved.exerciseIndex, saved.setIndex, true) },
-                identityRequired = saved.identityRequired)
+                identityRequired = saved.identityRequired, unilateral = saved.unilateral)
         }.toMutableList(), if (first.exerciseName.isNotBlank()) first.exerciseRestSeconds else template?.exercises?.getOrNull(index)?.restSeconds ?: first.exerciseRestSeconds)
     }.toMutableList()
     return WorkoutRoutine(snapshot.routineId,

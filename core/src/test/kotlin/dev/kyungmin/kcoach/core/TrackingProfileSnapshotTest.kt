@@ -14,7 +14,15 @@ class TrackingProfileSnapshotTest {
                 id = "press-return-family-$version")
             assertEquals(old, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(old)))
         }
-        assertEquals(MotionFamily.TRANSLATION_PRESS_RETURN, ExerciseTrackingProfiles.resolve("cable_pushdown").family)
+        assertEquals(MotionFamily.FLEXION_EXTENSION, ExerciseTrackingProfiles.resolve("cable_pushdown").family)
+        val translation = MotionFamilyTemplates.get(MotionFamily.TRANSLATION_PRESS_RETURN)
+        val frozenStraightBar = ExerciseTrackingProfiles.resolve("cable_pushdown").copy(
+            family = translation.family, signal = translation.signal, id = translation.family.sharedAlgorithmId,
+            minimumRepMs = translation.minimumRepMs, maximumRepMs = translation.maximumRepMs,
+            minimumSeparationMs = translation.minimumSeparationMs, minimumRelativeRom = translation.minimumRelativeRom,
+            minimumFeatureRate = translation.minimumFeatureRate, minimumLobeDisplacement = translation.minimumLobeDisplacement,
+            minimumLobeMs = translation.minimumLobeMs, maximumLobeMs = translation.maximumLobeMs)
+        assertEquals(frozenStraightBar, TrackingProfileSnapshot.decode(TrackingProfileSnapshot.encode(frozenStraightBar)))
         assertEquals(MotionFamily.TRANSLATION_PRESS_RETURN, ExerciseTrackingProfiles.resolve("flat_bench").family)
         assertEquals(MotionFamily.FLEXION_EXTENSION, ExerciseTrackingProfiles.resolve("ez_lying_extension").family)
         for (id in listOf("flat_bench", "cable_pushdown", "ez_lying_extension")) {

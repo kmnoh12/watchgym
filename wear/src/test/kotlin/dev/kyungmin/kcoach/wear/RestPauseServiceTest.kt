@@ -36,4 +36,38 @@ class RestPauseServiceTest {
             assertTrue(state().getLongExtra("restEndAtMs", 0L) - System.currentTimeMillis() in (frozen - 5_000L)..(frozen + 1_000L))
         } finally { controller.destroy() }
     }
+    @Test fun pausingAtTheDeadlineKeepsAResumableRest() {
+        val controller = Robolectric.buildService(WearWorkoutService::class.java).create()
+        try {
+            val service = controller.get()
+            service.onStartCommand(command("START", 1), 0, 1)
+            service.onStartCommand(command("REST", 2).putExtra("restEndAtMs", System.currentTimeMillis()), 0, 2)
+            service.onStartCommand(command("REST_PAUSE", 0), 0, 3)
+            assertTrue(state().getBooleanExtra("paused", false))
+            assertTrue("zero-second pause must keep rest identity", state().getBooleanExtra("restPaused", false))
+            assertEquals(1L, state().getLongExtra("pausedRestRemainingMs", 0))
+            service.onStartCommand(command("REST_RESUME", 0), 0, 4)
+            assertFalse(state().getBooleanExtra("paused", true))
+        } finally { controller.destroy() }
+    }
+
+    @Test fun pauseAfterTheZeroTickSurvivesPhoneAdvancingTheSameNextAttempt() {
+        val controller = Robolectric.buildService(WearWorkoutService::class.java).create()
+        try {
+            val service = controller.get()
+            service.onStartCommand(command("START", 1), 0, 1)
+            WearWorkoutService::class.java.getDeclaredField("reps").apply { isAccessible = true }.set(service, 8)
+            service.onStartCommand(command("REST", 2).putExtra("restEndAtMs", System.currentTimeMillis()), 0, 2)
+            val tick = WearWorkoutService::class.java.getDeclaredField("restTicker").apply { isAccessible = true }.get(service) as Runnable
+            tick.run()
+            service.onStartCommand(command("REST_PAUSE", 0), 0, 3)
+            assertTrue("a pause must not be dropped after the zero tick", state().getBooleanExtra("paused", false))
+            service.onStartCommand(command("SYNC", 3).putExtra("syncPhase", "PAUSED").putExtra("pausedRestRemainingMs", 0L)
+                .putExtra("restRev", 1L).putExtra("watchRestSeq", 1L), 0, 4)
+            assertTrue(state().getBooleanExtra("paused", false))
+            assertFalse(state().getBooleanExtra("restPaused", true))
+            assertEquals("the next set must not inherit the previous set count", 0, state().getIntExtra("reps", -1))
+        } finally { controller.destroy() }
+    }
+
 }

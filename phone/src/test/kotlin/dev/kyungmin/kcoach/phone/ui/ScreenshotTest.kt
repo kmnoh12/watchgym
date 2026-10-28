@@ -107,7 +107,7 @@ class ScreenshotTest {
         val context = androidx.compose.ui.platform.LocalContext.current
         val blank = { android.view.View(context) }
         val exercises = listOf(
-            dev.kyungmin.kcoach.phone.ExerciseDefinition("a", "랫 풀 다운", "등", "등", "케이블"),
+            dev.kyungmin.kcoach.phone.ExerciseDefinition("a", "랫풀다운", "등", "등", "케이블"),
             dev.kyungmin.kcoach.phone.ExerciseDefinition("b", "시티드 로우", "등", "등", "머신"),
         )
         val ui = CalibrationUi(
@@ -124,11 +124,11 @@ class ScreenshotTest {
         WorkoutResultScreen(
             ResultUi(
                 "등·이두", "68분 · 22세트 · 세션 12345678",
-                listOf(ResultSectionUi("랫 풀 다운 · 세트 1", SetAnalysisUi("lat_pull_down", "랫 풀 다운", 0, 10, 10, 10, 0.87).resultMetricRows(),
+                listOf(ResultSectionUi("랫풀다운 · 세트 1", SetAnalysisUi("lat_pull_down", "랫풀다운", 0, 10, 10, 10, 0.87).resultMetricRows(),
                     listOf(2.9, 3.0, 2.8, 2.6, 2.9, 3.1, 3.3, 3.4, 3.6, 3.5))),
                 ANALYSIS_ESTIMATE_NOTE,
                 listOf(
-                    RecordUi("랫 풀 다운", RecordTier.MAX_WEIGHT, "62.5kg", "이전 60kg · +2.5kg", value = 62.5, previous = 60.0),
+                    RecordUi("랫풀다운", RecordTier.MAX_WEIGHT, "62.5kg", "이전 60kg · +2.5kg", value = 62.5, previous = 60.0),
                     RecordUi("시티드 로우", RecordTier.REPS, "50kg 12회", "이 무게 최고 횟수 · 이전 10회", reps = 12, previousReps = 10),
                     RecordUi("덤벨 컬", RecordTier.ESTIMATE, "추정 1RM 24 → 25kg", ""),
                 ),
@@ -183,13 +183,13 @@ class ScreenshotTest {
             set(3, "4", "55", 8, false, null),
         )
         val ex = ExerciseUi(
-            "lat_pull_down", "랫 풀 다운", "등, 이두", true, 90, 10, 20, 2, 4, 2, sets,
+            "lat_pull_down", "랫풀다운", "등, 이두", true, 90, 10, 20, 2, 4, 2, sets,
             volumeDone = 1050, volumeTarget = 2100,
             history = HistoryUi("지난번 45×10 · 50×10 · 50×9", 1840, "55kg로 올리기", "모든 작업 세트를 목표 횟수까지 채웠어요", true),
         )
         return WorkoutUiModel(
             "등·이두", false, false, now - 21 * 60_000L, 0L, 0L, 0, listOf(ex), false,
-            if (resting) now - 20_000L else 0L, if (resting) now + 70_000L else 0L, 0L, "다음 랫 풀 다운 3세트",
+            if (resting) now - 20_000L else 0L, if (resting) now + 70_000L else 0L, 0L, "다음 랫풀다운 3세트",
             restingSet = if (resting) 0 to 1 else null,
         )
     }
@@ -199,7 +199,7 @@ class ScreenshotTest {
         val context = androidx.compose.ui.platform.LocalContext.current
         ActiveWorkoutScreen(
             workoutModel(false), noActions(),
-            LiveLine("Watch8 연결됨 · 랫 풀 다운 · 세트 3", "t").also { it.setTextColor(0xFF76DBB9.toInt()) },
+            LiveLine("Watch8 연결됨 · 랫풀다운 · 세트 3", "t").also { it.setTextColor(0xFF76DBB9.toInt()) },
             LiveLine("7/10회 · 55kg · 심박 112bpm", "t"),
         ) { android.view.View(context) }
     }
@@ -264,7 +264,7 @@ class ScreenshotTest {
                 SegGroup("그립", seg("노멀", "오버", "언더", "뉴트럴", "더보기", selected = 0), "표준 그립"),
                 SegGroup("운동 강도 (RPE)", seg("-", "6", "7", "8", "9", "10", "상세", selected = 4), "확실히 1개 더 할 수 있어요"),
             ),
-            listOf(SheetAction("이전에 세트 추가", false) {}, SheetAction("세트 삭제", true) {}),
+            listOf(SheetAction("다음 세트로 복제", false) {}, SheetAction("세트 삭제", true) {}),
         )
     }
 

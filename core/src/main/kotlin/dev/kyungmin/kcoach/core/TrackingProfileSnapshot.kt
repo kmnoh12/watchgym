@@ -41,10 +41,13 @@ object TrackingProfileSnapshot {
                 MotionFamily.FLEXION_EXTENSION)
             val historicalPress = migratedPress &&
                 p.family == MotionFamily.PRESS_RETURN && p.signal == TrackingSignal.COMBINED_MOTION
+            // Straight-bar sets captured before sharing the rope engine retain translation counting.
+            val historicalStraightBar = p.exerciseId == "cable_pushdown" && generic.family == MotionFamily.FLEXION_EXTENSION &&
+                p.family == MotionFamily.TRANSLATION_PRESS_RETURN && p.signal == TrackingSignal.DYNAMIC_ACCELERATION
             // Recordings made before these exercises moved to the cycle-axis engine replay with their frozen engine.
             val historicalCycle = generic.family == MotionFamily.CYCLE_AXIS_RETURN &&
                 p.family in setOf(MotionFamily.PULL_RETURN, MotionFamily.MULTI_AXIS_RETURN, MotionFamily.FLEXION_EXTENSION)
-            require((p.family == generic.family && p.signal == generic.signal || historicalPress || historicalCycle) && p.mode == generic.mode &&
+            require((p.family == generic.family && p.signal == generic.signal || historicalPress || historicalStraightBar || historicalCycle) && p.mode == generic.mode &&
                 p.capabilityTier == generic.capabilityTier && p.countMode == generic.countMode) {
                 "recorded profile contradicts exercise measurement policy"
             }

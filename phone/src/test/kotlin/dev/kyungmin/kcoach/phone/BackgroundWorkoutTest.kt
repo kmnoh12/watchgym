@@ -79,7 +79,7 @@ class BackgroundWorkoutTest {
         val store = SessionStore(app)
         val plan = listOf(
             PlannedSetSnapshot(0, "external_rotation", 0, 10, 5.0, false, exerciseName = "외회전", restSeconds = 0),
-            PlannedSetSnapshot(1, "lat_pull_down", 0, 8, 40.0, false, exerciseName = "랫 풀 다운", restSeconds = 0),
+            PlannedSetSnapshot(1, "lat_pull_down", 0, 8, 40.0, false, exerciseName = "랫풀다운", restSeconds = 0),
         )
         store.saveActive(snapshot().copy(plannedSets = plan))
         val commands = mutableListOf<String>()
@@ -87,7 +87,7 @@ class BackgroundWorkoutTest {
         c.receiveCompletion(completion(), 1_000).getOrThrow()
         assertEquals(1, c.advanceRest(1_000).getOrThrow()!!.exerciseIndex)
         assertEquals("lat_pull_down", WearSync.parse(commands.last())[3])
-        val second = WearSync.parse(WearSync.liveState("background-session", "lat_pull_down", "랫 풀 다운", 0, 8, 8, 40.0, 100, "SET_COMPLETE", false)).toMutableList()
+        val second = WearSync.parse(WearSync.liveState("background-session", "lat_pull_down", "랫풀다운", 0, 8, 8, 40.0, 100, "SET_COMPLETE", false)).toMutableList()
         second[11] = (WearSync.parse(completion())[11].toLong() + 1).toString()
         c.receiveCompletion(second.joinToString("|"), 2_000).getOrThrow()
         assertEquals(2, c.advanceRest(2_000).getOrThrow()!!.exerciseIndex)

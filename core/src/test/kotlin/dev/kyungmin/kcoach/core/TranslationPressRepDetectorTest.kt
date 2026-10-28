@@ -74,13 +74,13 @@ class TranslationPressRepDetectorTest {
 
     @Test fun aFiveCentimetreWristBobIsNotARepetition() {
         assertEquals(0, count("flat_bench", press(10, 1.0, 0.05, 1.2)))
-        assertEquals(0, count("cable_pushdown", press(10, 1.0, 0.05, 1.2)))
+        assertEquals(0, count("reverse_grip_pushdown", press(10, 1.0, 0.05, 1.2)))
     }
 
-    @Test fun fixedWristPushdownCountsOnTranslationWhileOldPressFamilyMissedIt() {
+    @Test fun fixedWristReverseGripPushdownKeepsTranslationWhileOldPressFamilyMissedIt() {
         val samples = press(10, 2.5, 0.45, 0.10)
-        assertEquals(10, count("cable_pushdown", samples))
-        val current = ExerciseTrackingProfiles.resolve("cable_pushdown")
+        assertEquals(10, count("reverse_grip_pushdown", samples))
+        val current = ExerciseTrackingProfiles.resolve("reverse_grip_pushdown")
         val old = current.copy(
             family = MotionFamily.PRESS_RETURN,
             id = MotionFamily.PRESS_RETURN.sharedAlgorithmId,

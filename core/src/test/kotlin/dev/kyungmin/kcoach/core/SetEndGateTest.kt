@@ -87,7 +87,8 @@ class SetEndGateTest {
     @Test fun aPauseBeforeTheTargetWaitsSevenSecondsAndAfterItThreeAsBefore() {
         val base = 3_000_000_000L
         assertEquals(7_000_000_000L, SetEndGate.waitNs(reps = 7, targetReps = 20, baseWaitNs = base))
-        assertEquals(base, SetEndGate.waitNs(reps = 20, targetReps = 20, baseWaitNs = base))
+        assertEquals(SetEndGate.TARGET_HIT_WAIT_NS, SetEndGate.waitNs(reps = 20, targetReps = 20, baseWaitNs = base))
+        assertEquals(base, SetEndGate.waitNs(reps = 21, targetReps = 20, baseWaitNs = base))
         assertEquals(base, SetEndGate.waitNs(reps = 5, targetReps = 0, baseWaitNs = base))
         // A learned wait longer than seven seconds is never shortened.
         assertEquals(9_000_000_000L, SetEndGate.waitNs(reps = 3, targetReps = 20, baseWaitNs = 9_000_000_000L))

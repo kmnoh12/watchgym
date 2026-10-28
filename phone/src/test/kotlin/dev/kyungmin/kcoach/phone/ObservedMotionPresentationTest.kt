@@ -15,7 +15,7 @@ class ObservedMotionPresentationTest {
     private fun metrics() = ObservedMotionMetrics("GENERIC_WRIST_CANDIDATE", listOf(
         ObservedRepMotion(0, 300_000_000, 1_000_000_000, 300.0, 700.0, null, null, null, 2.0, 2.0)))
     @Test fun mixedSignalExerciseDisplaysOnlyMeasuredGyroUnitsAndUnknownPauseStaysHidden() {
-        val analysis = SetAnalysisUi("lat_pull_down", "랫 풀 다운", 0, 1, 1, null, .8, motionMetrics = metrics())
+        val analysis = SetAnalysisUi("lat_pull_down", "랫풀다운", 0, 1, 1, null, .8, motionMetrics = metrics())
         val rows = analysis.resultMetricRows()
         assertTrue(rows.contains("시작→전환 평균" to "0.30초"))
         assertTrue(rows.contains("전환→복귀 평균" to "0.70초"))

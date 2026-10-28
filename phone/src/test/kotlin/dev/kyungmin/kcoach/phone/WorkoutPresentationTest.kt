@@ -65,7 +65,7 @@ class WorkoutPresentationTest {
             plannedSets = listOf(
                 first.copy(completed = true, performedReps = 6),
                 first.copy(exerciseIndex = 1, exerciseId = "flat_bench", completed = true, setId = "done-set", attemptId = "done-attempt"),
-                first.copy(exerciseIndex = 2, exerciseId = "lat_pull_down", exerciseName = "랫 풀 다운", setId = "next-set", attemptId = "next-attempt")))
+                first.copy(exerciseIndex = 2, exerciseId = "lat_pull_down", exerciseName = "랫풀다운", setId = "next-set", attemptId = "next-attempt")))
         SessionStore(app).saveActive(resting)
         val activity = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
         try {
@@ -87,7 +87,7 @@ class WorkoutPresentationTest {
     @Test fun resumingAfterChangingExerciseSendsTheSelectedSetToTheWatch() {
         val first = plan().plannedSets.single()
         SessionStore(app).saveActive(plan().copy(plannedSets = listOf(first,
-            first.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", exerciseName = "랫 풀 다운",
+            first.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", exerciseName = "랫풀다운",
                 setId = "next-set", attemptId = "next-attempt"))))
         val activity = Robolectric.buildActivity(MainActivity::class.java).create().start().resume()
         try {
@@ -140,7 +140,7 @@ class WorkoutPresentationTest {
             plannedSets = listOf(first,
                 first.copy(setIndex = 1, completed = false, performedReps = null,
                     setId = "pending-set", attemptId = "pending-attempt"),
-                first.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", exerciseName = "랫 풀 다운",
+                first.copy(exerciseIndex = 1, exerciseId = "lat_pull_down", exerciseName = "랫풀다운",
                     completed = false, performedReps = null, setId = "other-set", attemptId = "other-attempt")),
             lastCompletedSetKey = SetIdentity.completionKey(plan().sessionId, first))
         SessionStore(app).saveActive(resting)

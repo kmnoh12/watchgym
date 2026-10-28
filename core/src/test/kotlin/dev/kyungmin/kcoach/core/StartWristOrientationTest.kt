@@ -78,12 +78,12 @@ class StartWristOrientationTest {
 
     @Test fun allCatalogExercisesStayCandidatesDeferredOrManualRatherThanAutomaticallyConfirmed() {
         val groups = ExerciseMotionCatalog.explicitBindings.groupingBy { StartWristOrientationPolicy.candidate(it.exerciseId) }.eachCount()
-        assertEquals(205, ExerciseMotionCatalog.explicitBindings.size)
-        assertEquals(159, groups[StartWristCandidate.DEFERRED])
-        assertEquals(43, groups[StartWristCandidate.MANUAL])
-        assertEquals(1, groups[StartWristCandidate.HORIZONTAL_PALM_UP])
+        assertEquals(229, ExerciseMotionCatalog.explicitBindings.size)
+        assertEquals(180, groups[StartWristCandidate.DEFERRED])
+        assertEquals(44, groups[StartWristCandidate.MANUAL])
+        assertEquals(2, groups[StartWristCandidate.HORIZONTAL_PALM_UP])
         assertEquals(1, groups[StartWristCandidate.HORIZONTAL_KNUCKLES_UP])
-        assertEquals(1, groups[StartWristCandidate.ARM_DOWN])
+        assertEquals(2, groups[StartWristCandidate.ARM_DOWN])
         assertEquals("UNCONFIRMED", StartWristOrientationPolicy.uncheckedStartStatus("cable_external_rot"))
         assertEquals("DEFERRED", StartWristOrientationPolicy.uncheckedStartStatus("lat_pull_down"))
         assertEquals("MANUAL", StartWristOrientationPolicy.uncheckedStartStatus("pushup"))

@@ -39,7 +39,7 @@ class WorkoutScreenShrinkTest {
     @Test fun deletingExercisesBehindThePagerDoesNotThrowOrBlankTheScreen() {
         val state = mutableStateOf(model(listOf(
             "dumbbell_curl" to "덤벨 컬",
-            "lat_pull_down" to "랫 풀 다운",
+            "lat_pull_down" to "랫풀다운",
             "seated_row" to "시티드 로우",
         )))
         compose.setContent {

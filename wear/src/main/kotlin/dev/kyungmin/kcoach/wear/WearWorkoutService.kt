@@ -192,6 +192,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private var lastAppliedCommand = ""
     private var lastCommandRevision = 0L
     private val completionRetry = Runnable { replayCompletion() }
+    private var unilateralProgress: dev.kyungmin.kcoach.core.UnilateralProgress? = null
     private val manualOutbox by lazy { ManualSetOutbox(this) }
     private val patternProfiles by lazy { PatternProfileStore(this) }
     private var patternShadowCommandId = ""
@@ -286,7 +287,10 @@ class WearWorkoutService : Service(), SensorEventListener {
             if (sameSession && rev <= phoneRev) {
                 markPhoneAlive(); acknowledgeCommand(intent, "DUPLICATE"); return restartMode()
             }
-            if (sameSession && intent.getLongExtra("watchRestSeq", 0) < mySeq) {
+            // The watch keeps its own newer rest adjustment only while it is actually resting. Mid-set the phone's
+            // committed rest must be obeyed, or a finished set keeps counting on the wrist with no rest timer.
+            val holdingOwnRest = resting || paused && pausedRestRemainingMs > 0L
+            if (sameSession && holdingOwnRest && intent.getLongExtra("watchRestSeq", 0) < mySeq) {
                 phoneRev = rev
                 if (!checkpoint()) {
                     runtimeFailure("command-checkpoint", java.io.IOException("Rest revision checkpoint failed"))
@@ -437,7 +441,8 @@ class WearWorkoutService : Service(), SensorEventListener {
             "CAPTURE_ACK" -> acknowledgeCapture(intent.getStringExtra("captureId").orEmpty())
             "SET_COMPLETE" -> {
                 completeSet(manual = true)
-                startRest(intent)
+                // A local first-arm finish must wait for the phone's side decision, not start its own rest.
+                if (unilateralProgress == null) startRest(intent)
             }
         }
         }
@@ -499,6 +504,9 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (incoming != sessionId && type !in setOf("START", "SYNC") && !(sessionId.isBlank() && type == "SET")) return "WRONG_SESSION"
         if (incoming != sessionId && sessionId.isNotBlank() && revision == 0L && lastCommandRevision > 0) return "STALE"
         if (type == "SYNC" && intent.getStringExtra("syncPhase") !in setOf("WORKING", "RESTING", "PAUSED")) return "INVALID"
+        val incomingUnilateral = runCatching { dev.kyungmin.kcoach.core.UnilateralProgress.decode(intent.getStringExtra("unilateralProgress").orEmpty()) }
+            .getOrElse { return "INVALID" }
+        val sideHold = type in setOf("START", "SET", "SYNC") && incomingUnilateral?.holdsRest == true
         val requestedShadow = intent.getStringExtra("patternShadowCommandId").orEmpty()
         val workingRequest = type in setOf("START", "SET") || type == "SYNC" &&
             (intent.getStringExtra("syncPhase") == "WORKING" || intent.getStringExtra("syncPhase") == "PAUSED" &&
@@ -551,8 +559,8 @@ class WearWorkoutService : Service(), SensorEventListener {
             if (profile.compatibility.recipe != dev.kyungmin.kcoach.core.ExerciseMeasurementContracts.resolve(intent.getStringExtra("exerciseId").orEmpty()).recipe)
                 return "PATTERN_NOT_READY"
         }
-        if (pendingCompletion != null && incoming == sessionId && (type in setOf("START", "SET") || (type == "SYNC" && intent.getStringExtra("syncPhase") == "WORKING"))) return "WAITING_COMPLETION"
-        if (manualOutbox.latest(sessionId, setId, attemptId)?.ack == null &&
+        if (!sideHold && pendingCompletion != null && incoming == sessionId && (type in setOf("START", "SET") || (type == "SYNC" && intent.getStringExtra("syncPhase") == "WORKING"))) return "WAITING_COMPLETION"
+        if (!sideHold && manualOutbox.latest(sessionId, setId, attemptId)?.ack == null &&
             manualOutbox.latest(sessionId, setId, attemptId) != null && incoming == sessionId && sameSet(intent) &&
             (type in setOf("START", "SET", "RESUME") || (type == "SYNC" && intent.getStringExtra("syncPhase") == "WORKING"))) return "WAITING_COMPLETION"
         return null
@@ -568,6 +576,7 @@ class WearWorkoutService : Service(), SensorEventListener {
             intent.getLongExtra("restEndAtMs", 0L).toString(), intent.getStringExtra("syncPhase").orEmpty(),
             intent.getLongExtra("pausedRestRemainingMs", 0L).toString(),
             intent.getStringExtra("patternShadowCommandId").orEmpty(),
+            intent.getStringExtra("unilateralProgress").orEmpty(),
         )
         var boundFields = intent.getStringExtra("patternBinding")?.takeIf { it.isNotEmpty() }?.let { fields + it } ?: fields
         intent.getStringExtra("patternWearing")?.takeIf { it.isNotEmpty() }?.let { boundFields = boundFields + it }
@@ -595,6 +604,11 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun applySync(intent: Intent) {
+        val sideProgress = dev.kyungmin.kcoach.core.UnilateralProgress.decode(intent.getStringExtra("unilateralProgress").orEmpty())
+        if (sideProgress?.holdsRest == true && intent.getStringExtra("syncPhase") in setOf("WORKING", "PAUSED")) {
+            applyUnilateralHold(intent, sideProgress)
+            return
+        }
         val same = sessionId == intent.getStringExtra("session") && exerciseId == intent.getStringExtra("exerciseId") && sameSet(intent)
         if (same) setIndex = intent.getIntExtra("setIndex", setIndex)
         when (intent.getStringExtra("syncPhase")) {
@@ -608,7 +622,9 @@ class WearWorkoutService : Service(), SensorEventListener {
                     pausedRestRemainingMs = remaining
                     broadcastState(force = true)
                 } else {
-                    if (!same || (!running && !paused)) startSession(intent)
+                    // A zero-boundary rest pause may now refer to the phone's next working set.
+                    // Reinitialize that set rather than retaining the previous set's count/rest flag.
+                    if (!same || (!running && !paused) || resting || pausedRestRemainingMs > 0L) startSession(intent)
                     pauseSession()
                 }
             }
@@ -616,6 +632,53 @@ class WearWorkoutService : Service(), SensorEventListener {
                 if (same && paused && pausedRestRemainingMs == 0L) resumeSession() else startSession(intent)
             }
         }
+    }
+
+    /** No accelerometer, rep detector, target timeout or automatic rest runs for the unobserved arm. */
+    private fun applyUnilateralHold(intent: Intent, progress: dev.kyungmin.kcoach.core.UnilateralProgress) {
+        markPhoneAlive()
+        running = false
+        stopRestTicker()
+        handler.removeCallbacks(setEndTicker)
+        cancelMeasurementPreparation()
+        unregisterMotionSensors()
+        if (captureSampleCount > 0) {
+            val capture = saveCapture()
+            check(capture != null) { "First-arm capture must be retained before changing sides" }
+            sendCaptureToPhone(capture)
+            resetCaptureBuffer(deleteChunks = true)
+        }
+        sessionId = intent.getStringExtra("session").orEmpty()
+        exerciseId = intent.getStringExtra("exerciseId").orEmpty()
+        exerciseName = intent.getStringExtra("exerciseName").orEmpty()
+        setId = intent.getStringExtra("setId").orEmpty()
+        attemptId = intent.getStringExtra("attemptId").orEmpty()
+        setIndex = intent.getIntExtra("setIndex", 0)
+        targetReps = intent.getIntExtra("targetReps", 10)
+        weightKg = intent.getDoubleExtra("weightKg", Double.NaN).takeIf { it.isFinite() }
+        restSeconds = intent.getIntExtra("restSeconds", 60)
+        unilateralProgress = progress
+        // A reconnect can land directly in a paused arm hold; its checkpoint must belong to this exercise.
+        trackingProfile = ExerciseTrackingProfiles.resolve(exerciseId, exerciseName)
+        calibrationStage = null
+        phoneCheckPending = false; phoneCheckResting = false
+        patternBinding = incomingPatternBinding(intent)
+        patternSelectionMode = intent.getStringExtra("patternSelectionMode").orEmpty()
+        patternWearing = intent.getStringExtra("patternWearing").orEmpty()
+        startWristContext = intent.getStringExtra("startWristContext").orEmpty()
+        startWristDeviceId = if (startWristContext.isEmpty()) "" else WearClockEpoch.current(this).deviceId
+        startDirectionSnapshot = intent.getStringExtra("startDirectionSnapshot").orEmpty()
+        tempoSettings = intent.getStringExtra("tempoSettings").orEmpty()
+        reps = requireNotNull(progress.watchReps)
+        resting = false
+        paused = intent.getStringExtra("syncPhase") == "PAUSED"
+        restEndAtMs = 0; pausedRestRemainingMs = 0
+        measurementReady = false; measurementArmed = false; countingPaused = false
+        if (paused) sensorManager.unregisterListener(this)
+        else if (hasBodySensorPermission()) heartRateSensor?.let { registerSensor(it, SensorManager.SENSOR_DELAY_NORMAL) }
+        check(checkpoint())
+        sendLiveState(currentPhase(), false, force = true)
+        broadcastState(force = true)
     }
 
     private fun replayCompletion() {
@@ -660,9 +723,11 @@ class WearWorkoutService : Service(), SensorEventListener {
             }
             "REST_PAUSE", "REST_RESUME" -> {
                 val pause = intent.getStringExtra(EXTRA_COMMAND) == "REST_PAUSE"
-                if (pause && !resting || !pause && (!paused || pausedRestRemainingMs <= 0)) return
+                val completedRest = !running && !resting && !paused && lastRestCueSecond == 0L
+                if (pause && !resting && !completedRest || !pause && (!paused || pausedRestRemainingMs <= 0)) return
                 val now = System.currentTimeMillis()
-                val remaining = if (pause) (restEndAtMs - now).coerceAtLeast(0) else pausedRestRemainingMs
+                // A paused rest must stay distinguishable from a paused working set at the deadline.
+                val remaining = if (pause) (restEndAtMs - now).coerceAtLeast(1) else pausedRestRemainingMs
                 val nextSeq = mySeq + 1
                 val request = dev.kyungmin.kcoach.core.WatchWorkoutControl(java.util.UUID.randomUUID().toString(),
                     if (pause) dev.kyungmin.kcoach.core.WatchWorkoutAction.REST_PAUSE else dev.kyungmin.kcoach.core.WatchWorkoutAction.REST_RESUME,
@@ -671,7 +736,10 @@ class WearWorkoutService : Service(), SensorEventListener {
                     pausedRestRemainingMs = if (pause) remaining else null)
                 check(workoutControls.enqueue(request))
                 mySeq = nextSeq
-                if (pause) { pauseSession(); pausedRestRemainingMs = remaining; restEndAtMs = 0 }
+                if (pause) {
+                    if (completedRest) { resting = true; restEndAtMs = now }
+                    pauseSession(); pausedRestRemainingMs = remaining; restEndAtMs = 0
+                }
                 else resumeSession(request.restEndAtMs)
                 check(checkpoint()); replayWorkoutControls()
             }
@@ -769,6 +837,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun runtimeState(): JSONObject = JSONObject().put("session", sessionId).put("exerciseId", exerciseId).put("exerciseName", exerciseName)
             .put("setIndex", setIndex).put("setId", setId).put("attemptId", attemptId).put("targetReps", targetReps).put("weightKg", weightKg ?: JSONObject.NULL)
             .put("phoneRev", phoneRev).put("mySeq", mySeq)
+            .put("unilateralProgress", unilateralProgress?.encode().orEmpty())
             .put("restSeconds", restSeconds).put("restEndAtMs", restEndAtMs).put("pausedRestRemainingMs", pausedRestRemainingMs)
             .put("countingPaused", countingPaused).put("countingResetAfterNs", countingResetAfterNs).put("editStatus", editStatus)
             .put("running", running).put("resting", resting).put("paused", paused).put("reps", reps).put("heartRate", heartRate)
@@ -822,6 +891,7 @@ class WearWorkoutService : Service(), SensorEventListener {
             restSeconds = state.getInt("restSeconds"); restEndAtMs = state.getLong("restEndAtMs")
             pausedRestRemainingMs = state.getLong("pausedRestRemainingMs")
             running = state.getBoolean("running"); resting = state.getBoolean("resting"); paused = state.getBoolean("paused")
+            unilateralProgress = dev.kyungmin.kcoach.core.UnilateralProgress.decode(state.optString("unilateralProgress"))
             countingPaused = state.optBoolean("countingPaused") && running && !resting
             countingResetAfterNs = state.optLong("countingResetAfterNs")
             editStatus = state.optString("editStatus")
@@ -921,6 +991,11 @@ class WearWorkoutService : Service(), SensorEventListener {
             if (manual != null && !resting) {
                 running = false
                 reps = manual.command.performedReps
+            }
+            if (unilateralProgress?.holdsRest == true) {
+                running = false
+                handler.removeCallbacks(setEndTicker)
+                cancelMeasurementPreparation()
             }
             if (running && !countingPaused && reps >= targetReps && trackingProfile.mode != TrackingMode.MANUAL_REQUIRED &&
                 dev.kyungmin.kcoach.core.CapturePurpose.forSession(sessionId).stopAtTarget) completeSet() else if (running) registerSensors()
@@ -1095,6 +1170,11 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun startSession(intent: Intent) {
+        val progress = dev.kyungmin.kcoach.core.UnilateralProgress.decode(intent.getStringExtra("unilateralProgress").orEmpty())
+        if (progress?.holdsRest == true) {
+            applyUnilateralHold(intent, progress)
+            return
+        }
         markPhoneAlive()
         val incomingSessionId = intent.getStringExtra("session").orEmpty().ifBlank { sessionId }
         val incomingExerciseId = intent.getStringExtra("exerciseId").orEmpty()
@@ -1127,6 +1207,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         if (sessionId != incomingSessionId) { tempoPolicy = dev.kyungmin.kcoach.core.TempoFeedbackPolicy(); lastTempoAlertNs = 0L }
         WatchHomeStore(this).leaveCompletion()
         sessionId = incomingSessionId
+        unilateralProgress = dev.kyungmin.kcoach.core.UnilateralProgress.decode(intent.getStringExtra("unilateralProgress").orEmpty())
         exerciseId = incomingExerciseId
         exerciseName = intent.getStringExtra("exerciseName").orEmpty().ifBlank { exerciseId.replace('_', ' ') }
         setIndex = incomingSetIndex
@@ -1347,6 +1428,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         trackingProfile.mode != TrackingMode.MANUAL_REQUIRED
 
     private fun startRest(intent: Intent) {
+        unilateralProgress = null
         countingPaused = false
         if (captureSampleCount > 0 && (!sameSet(intent) || intent.getStringExtra("exerciseId").orEmpty().let { it.isNotBlank() && it != exerciseId })) {
             val oldCapture = saveCapture()
@@ -1416,8 +1498,8 @@ class WearWorkoutService : Service(), SensorEventListener {
         setEndGate.reset(); postTargetGuard.reset()
         tempoPolicy.pause()
         markPhoneAlive()
-        if (!running && !resting) return
-        if (resting) pausedRestRemainingMs = (restEndAtMs - System.currentTimeMillis()).coerceAtLeast(0L)
+        if (!running && !resting && unilateralProgress?.holdsRest != true) return
+        if (resting) pausedRestRemainingMs = (restEndAtMs - System.currentTimeMillis()).coerceAtLeast(1L)
         running = false
         resting = false
         paused = true
@@ -1432,6 +1514,13 @@ class WearWorkoutService : Service(), SensorEventListener {
     private fun resumeSession(restDeadline: Long? = null) {
         markPhoneAlive()
         if (!paused) return
+        if (unilateralProgress?.holdsRest == true) {
+            paused = false
+            if (hasBodySensorPermission()) heartRateSensor?.let { registerSensor(it, SensorManager.SENSOR_DELAY_NORMAL) }
+            sendLiveState(currentPhase(), false, force = true)
+            broadcastState(force = true)
+            return
+        }
         paused = false
         if (pausedRestRemainingMs > 0L) {
             restEndAtMs = restDeadline ?: (System.currentTimeMillis() + pausedRestRemainingMs)
@@ -1462,6 +1551,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun finishSession(phase: String, startId: Int = 0) {
+        unilateralProgress = null
         markPhoneAlive()
         if (sessionId.isBlank()) {
             resetForPhoneDisconnect()
@@ -2310,6 +2400,7 @@ class WearWorkoutService : Service(), SensorEventListener {
     }
 
     private fun resetSessionFields() {
+        unilateralProgress = null
         countingPaused = false; countingResetAfterNs = 0L; editStatus = ""
         shadowSampleCalls = 0L; shadowProcessingHistogram.fill(0); shadowEvents.clear()
         patternShadowCommandId = ""; frozenShadow = null; shadowDetector = null; shadowUseConfirmed = false; shadowCount = 0; shadowInterrupted = false
@@ -2373,7 +2464,10 @@ class WearWorkoutService : Service(), SensorEventListener {
             putExtra("setIndex", setIndex)
             putExtra("setId", setId)
             putExtra("attemptId", attemptId)
-            putExtra("manualRequired", trackingProfile.mode == TrackingMode.MANUAL_REQUIRED)
+            putExtra("unilateralProgress", unilateralProgress?.encode().orEmpty())
+            putExtra("unilateralStage", unilateralProgress?.stage?.name.orEmpty())
+            putExtra("otherSideTargetReps", unilateralProgress?.watchReps ?: -1)
+            putExtra("manualRequired", unilateralProgress?.stage == dev.kyungmin.kcoach.core.UnilateralStage.OTHER_SIDE_WORKING || trackingProfile.mode == TrackingMode.MANUAL_REQUIRED)
             putExtra("manualStatus", editStatus.ifEmpty { workoutControls.latest()?.takeIf {
                 it.command.sessionId == sessionId && it.command.setId == setId && it.command.attemptId == attemptId &&
                     it.command.action in setOf(dev.kyungmin.kcoach.core.WatchWorkoutAction.REST_ADJUST, dev.kyungmin.kcoach.core.WatchWorkoutAction.REST_PAUSE, dev.kyungmin.kcoach.core.WatchWorkoutAction.REST_RESUME, dev.kyungmin.kcoach.core.WatchWorkoutAction.EDIT_SET)
@@ -2420,6 +2514,7 @@ class WearWorkoutService : Service(), SensorEventListener {
         !resting && manualOutbox.latest(sessionId, setId, attemptId)?.let { it.ack == null } == true -> "MANUAL_PENDING"
         paused -> "PAUSED"
         resting -> "RESTING"
+        unilateralProgress?.holdsRest == true -> requireNotNull(unilateralProgress).stage.name
         phoneCheckPending -> "PHONE_CHECK"
         running -> currentWorkingPhase()
         sessionId.isNotBlank() -> "READY"

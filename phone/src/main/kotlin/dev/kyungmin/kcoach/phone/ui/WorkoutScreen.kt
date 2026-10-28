@@ -113,7 +113,7 @@ fun ActiveWorkoutScreen(
         val exercise = model.exercises.getOrNull(target.exerciseIndex) ?: return
         val set = exercise.sets.getOrNull(target.setIndex) ?: return
         editing = target
-        buffer = if (target.field == SetField.WEIGHT) set.weightText.takeIf { it != "체중" }.orEmpty() else set.reps?.toString().orEmpty()
+        buffer = if (target.field == SetField.WEIGHT) set.weightText.takeIf { it != "-" }.orEmpty() else set.reps?.toString().orEmpty()
         freshEdit = true
     }
 
@@ -352,7 +352,7 @@ private fun ExercisePage(
                     if (focused && keypadOpen) { delay(Motion.PANEL_MS.toLong()); requester.bringIntoView() }
                 }
                 SwipeRevealDelete(
-                    enabled = exercise.sets.size > 1,
+                    enabled = model.swipeDelete && exercise.sets.size > 1,
                     onDelete = { onRemoveSet(setIndex) },
                     modifier = Modifier.bringIntoViewRequester(requester),
                 ) {

@@ -417,7 +417,7 @@ class MainActivity : ComponentActivity() {
                     lastWorkoutResult?.takeIf { it.sessionId == sessionId }?.analyses?.set(analysis.key, analysis)
                     lastWorkoutResult?.takeIf { it.sessionId == sessionId }?.let(::persistLastWorkoutResult)
                     wearLiveStatus?.takeIf { it.tag != WATCH_PANEL_TELEMETRY }?.apply {
-                        text = "세트 분석 완료 · 자동 추정 ${measuredRepsText(analysis.confirmedReps, "확인 필요")} · 실제 횟수를 확인해 주세요"
+                        text = "세트 완료 · ${measuredRepsText(analysis.confirmedReps, "횟수 미측정")}"
                         setTextColor(green)
                     }
                     if (visibleWorkoutResultSessionId == sessionId) refreshVisibleWorkoutResult()
@@ -671,9 +671,15 @@ class MainActivity : ComponentActivity() {
             Screen.LIBRARY -> returnFromLibrary?.invoke() ?: showHome()
             Screen.EXERCISE_INFO -> returnFromExerciseInfo?.invoke() ?: showHome()
             Screen.EXERCISE_RECORD -> returnFromExerciseRecord?.invoke() ?: showHome()
-            Screen.ACTIVE, Screen.REST -> showHome()
+            Screen.ACTIVE, Screen.REST -> leaveActiveWorkoutPage()
             Screen.MY_MOUNTAIN -> showRecords()
         }
+    }
+
+    /** Back leaves the active page for the running overview (session title, clock, set progress, complete/add), never the workout. */
+    private fun leaveActiveWorkoutPage() {
+        val workout = activeWorkout ?: return showHome()
+        showRoutine(workout.routine, active = workout)
     }
 
     private val workoutLogStore by lazy { WorkoutLogStore(applicationContext) }
@@ -733,7 +739,7 @@ class MainActivity : ComponentActivity() {
             freeWorkout = ::showFreeWorkout,
             add = ::showAddSheet,
             openRunning = { showActiveWorkout() },
-            openRunningList = { running?.let { showRoutine(it.routine, active = it, animateIn = true) } },
+            openRunningList = { running?.let { showRoutine(it.routine, active = it, animateFromBottom = true) } },
             togglePause = {
                 running?.let(::toggleWorkoutPause)
                 showHome()
@@ -752,11 +758,12 @@ class MainActivity : ComponentActivity() {
         active: ActiveWorkout? = null,
         onExit: (() -> Unit)? = null,
         animateIn: Boolean = false,
+        animateFromBottom: Boolean = false,
     ) {
         if (active == null) {
             // The running workout owns its own copy of the routine; always show that one so taps reach the live exercise.
             activeWorkout?.takeIf { it.routine === routine || it.routine.id == routine.id }
-                ?.let { return showRoutine(it.routine, reorderMode, it, onExit, animateIn) }
+                ?.let { return showRoutine(it.routine, reorderMode, it, onExit, animateIn, animateFromBottom) }
         }
         if (active == null && activeWorkout == null) {
             prefillProgression(routine)
@@ -781,17 +788,14 @@ class MainActivity : ComponentActivity() {
         val actions = RoutineDetailActions(
             back = { onExit?.invoke() ?: onBackPressed() },
             open = { index ->
-                if (active != null && active.routine === routine) showWorkoutExercise(active, index)
-                else showExercisePreview(routine, index)
+                if (active != null && active.routine === routine) {
+                    showWorkoutExercise(active, index)
+                } else showExercisePreview(routine, index)
             },
             info = { index -> showExerciseInfo(routine.exercises[index].exercise, reload) },
             menu = { index -> showExerciseMenu(routine, index, active, reload) },
             move = { from, to -> moveRoutineExercise(routine, from, to, active, announce = false) },
-            moveFinished = {
-                active?.takeIf { it.routine === routine }?.let(::persistActiveWorkout)
-                if (routines.any { it === routine }) saveRoutineLibrary()
-                Toast.makeText(this, "순서를 바꿨어요", Toast.LENGTH_SHORT).show()
-            },
+            moveFinished = { finishRoutineMove(routine) },
             primary = { if (active != null) showMyMountainDecision() else startWorkout(routine) },
             addExercise = {
                 openLibrary(
@@ -823,7 +827,7 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-        showDetail(body, null, animateFromRight = animateIn)
+        showDetail(body, null, animateFromRight = animateIn, animateFromBottom = animateFromBottom)
     }
 
     private fun freeRoutine() = WorkoutRoutine("free", "자유운동", "선택 운동", "오늘", freeExercises)
@@ -1174,11 +1178,11 @@ class MainActivity : ComponentActivity() {
 
     private fun calibrationExercises(): List<ExerciseDefinition> {
         val additional = listOf(
-            ExerciseDefinition("squat", "스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "맨몸"),
-            ExerciseDefinition("barbell_squat", "백 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "바벨"),
-            ExerciseDefinition("front_squat", "프런트 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "바벨"),
-            ExerciseDefinition("goblet_squat", "고블릿 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "덤벨"),
-            ExerciseDefinition("smith_squat", "스미스 스쿼트 · 전신 촬영", "대퇴, 둔근", "하체", "머신"))
+            ExerciseDefinition("squat", "스쿼트", "대퇴, 둔근", "하체", "맨몸"),
+            ExerciseDefinition("barbell_squat", "백 스쿼트", "대퇴, 둔근", "하체", "바벨"),
+            ExerciseDefinition("front_squat", "프런트 스쿼트", "대퇴, 둔근", "하체", "바벨"),
+            ExerciseDefinition("goblet_squat", "고블릿 스쿼트", "대퇴, 둔근", "하체", "덤벨"),
+            ExerciseDefinition("smith_squat", "스미스 스쿼트", "대퇴, 둔근", "하체", "머신"))
         return WorkoutData.catalog + additional.filter { extra -> WorkoutData.catalog.none { it.id == extra.id } }
     }
 
@@ -1361,7 +1365,7 @@ class MainActivity : ComponentActivity() {
         )
         val workout = ActiveWorkout(
             routine = routine.copy(exercises = routine.exercises.map { item ->
-                item.copy(sets = item.sets.map { it.copy(completed = false, performedReps = null, repSource = null, setId = java.util.UUID.randomUUID().toString(), attemptId = java.util.UUID.randomUUID().toString(), identityRequired = true) }.toMutableList())
+                item.copy(sets = item.sets.map { it.copy(completed = false, performedReps = null, repSource = null, unilateral = null, setId = java.util.UUID.randomUUID().toString(), attemptId = java.util.UUID.randomUUID().toString(), identityRequired = true) }.toMutableList())
             }.toMutableList()),
             exerciseIndex = safeExerciseIndex,
             setIndex = safeSetIndex,
@@ -1400,7 +1404,7 @@ class MainActivity : ComponentActivity() {
     private fun prepareRoutineForWatch(routine: WorkoutRoutine) {
         if (calibrationSessionId != null || routine.exercises.none { it.sets.isNotEmpty() }) return
         val prepared = ActiveWorkout(routine = routine.copy(exercises = routine.exercises.map { item ->
-            item.copy(sets = item.sets.map { it.copy(completed = false, performedReps = null, repSource = null,
+            item.copy(sets = item.sets.map { it.copy(completed = false, performedReps = null, repSource = null, unilateral = null,
                 setId = java.util.UUID.randomUUID().toString(), attemptId = java.util.UUID.randomUUID().toString(),
                 identityRequired = true) }.toMutableList())
         }.toMutableList()))
@@ -1526,6 +1530,10 @@ class MainActivity : ComponentActivity() {
 
     private fun syncWorkingSet(workout: ActiveWorkout) {
         if (activeWorkout === workout && !workout.paused && workout.phase == WorkoutPhase.WORKING && activeRestEndAtMs <= 0L) {
+            if (workout.routine.exercises.getOrNull(workout.exerciseIndex)?.sets?.getOrNull(workout.setIndex)?.unilateral?.holdsRest == true) {
+                resyncActiveWorkoutToWatch(workout)
+                return
+            }
             sendWear(WearSync.PATH_COMMAND, PhoneSessionController.command(workoutSnapshot(workout), "SET"))
         }
     }
@@ -1534,8 +1542,6 @@ class MainActivity : ComponentActivity() {
         if (activeWorkout == null) {
             activeWorkout = restoreActiveWorkout() ?: return
             previewWorkout = null
-            if (currentScreen in setOf(Screen.ACTIVE, Screen.REST, Screen.ROUTINE)) showActiveWorkout(forceRebuild = true)
-            else if (currentScreen == Screen.ROOT && currentTab == RootTab.HOME) showHome()
         }
         val workout = activeWorkout ?: return
         val snapshot = sessionStore.loadActive().getOrElse {
@@ -1547,11 +1553,15 @@ class MainActivity : ComponentActivity() {
         workout.analyses.clear()
         workout.analyses.putAll(SetAnalysisStore(this).loadForSession(workout.sessionId))
         lastCompletedLiveKey = snapshot.lastCompletedSetKey
-        if (snapshot.exerciseIndex >= workout.routine.exercises.size) {
+        if (snapshot.exerciseIndex >= workout.routine.exercises.size &&
+            currentScreen in setOf(Screen.ACTIVE, Screen.REST)) {
             showMyMountainDecision()
             return
         }
         if (currentScreen == Screen.ACTIVE || currentScreen == Screen.REST) showActiveWorkout()
+        else if (currentScreen == Screen.ROUTINE && selectedRoutine?.id == workout.routine.id) {
+            showRoutine(workout.routine, active = workout)
+        }
         else if (currentScreen == Screen.ROOT && currentTab == RootTab.HOME) showHome()
     }
 
@@ -1739,6 +1749,7 @@ class MainActivity : ComponentActivity() {
             pausedSinceMs = workout.pausedSinceMs,
             exerciseIndex = workout.restingPageIndex ?: workout.exerciseIndex,
             usePounds = workout.usePounds,
+            swipeDelete = SwipeDeleteSetting.isEnabled(this),
             restStartAtMs = activeRestStartAtMs,
             restEndAtMs = activeRestEndAtMs,
             pausedRestRemainingMs = pausedRestRemainingMs,
@@ -1806,6 +1817,9 @@ class MainActivity : ComponentActivity() {
         val before = workout.copy(
             performedRepsByExercise = workout.performedRepsByExercise.toMutableMap(),
             analyses = workout.analyses.toMutableMap(),
+            setIndexByExercise = workout.setIndexByExercise.toMutableMap(),
+            selectedSetIndexByExercise = workout.selectedSetIndexByExercise.toMutableMap(),
+            scrollYByExercise = workout.scrollYByExercise.toMutableMap(),
         )
         val restStart = activeRestStartAtMs
         val restEnd = activeRestEndAtMs
@@ -1823,6 +1837,14 @@ class MainActivity : ComponentActivity() {
             workout.exerciseIndex = before.exerciseIndex
             workout.setIndex = before.setIndex
             workout.selectedEditSetIndex = before.selectedEditSetIndex
+            workout.restingPageIndex = before.restingPageIndex
+            workout.scrollY = before.scrollY
+            workout.setIndexByExercise.clear()
+            workout.setIndexByExercise.putAll(before.setIndexByExercise)
+            workout.selectedSetIndexByExercise.clear()
+            workout.selectedSetIndexByExercise.putAll(before.selectedSetIndexByExercise)
+            workout.scrollYByExercise.clear()
+            workout.scrollYByExercise.putAll(before.scrollYByExercise)
             workout.phase = before.phase
             workout.lastCompletedSetKey = before.lastCompletedSetKey
             workout.performedRepsByExercise.clear()
@@ -1845,7 +1867,6 @@ class MainActivity : ComponentActivity() {
         }
         rollback?.invoke()
         pendingWorkoutRollback = null
-        Toast.makeText(this, "변경을 저장하지 못했어요. 이전 상태로 되돌렸어요", Toast.LENGTH_SHORT).show()
         bumpWorkoutUi()
     }
 
@@ -1854,17 +1875,23 @@ class MainActivity : ComponentActivity() {
         val result = PhoneSessionController(sessionStore) { path, payload ->
             PhoneWorkoutService.send(this, path, payload)
         }.editPlan({ workoutSnapshot(workout) }, edit)
-        val applied = result.getOrElse {
-            Toast.makeText(this, "변경을 저장하지 못했어요. 이전 상태로 되돌렸어요", Toast.LENGTH_SHORT).show()
-            activeLiveStatus?.apply {
-                text = "세션 저장에 실패했어요 · 변경 전 상태를 유지해요"
-                setTextColor(amber)
-            }
-            return false
-        }
+        val applied = result.getOrElse { return false }
         finishWorkoutEdit(workout, true)
+        val navigation = workout.routine.exercises.map { exercise ->
+            val key = workoutExerciseKey(exercise)
+            Triple(exercise.sets.map { it.setId },
+                workout.setIndexByExercise[key]?.let { exercise.sets.getOrNull(it)?.setId },
+                workout.selectedSetIndexByExercise[key]?.let { exercise.sets.getOrNull(it)?.setId })
+        }
         val restStartedAt = activeRestStartAtMs
         applySnapshotToWorkout(workout, applied.snapshot)
+        navigation.forEach { (ids, cursorId, selectedId) ->
+            val exercise = workout.routine.exercises.firstOrNull { item -> item.sets.any { it.setId in ids } }
+                ?: return@forEach
+            val key = workoutExerciseKey(exercise)
+            exercise.sets.indexOfFirst { it.setId == cursorId }.takeIf { it >= 0 }?.let { workout.setIndexByExercise[key] = it }
+            exercise.sets.indexOfFirst { it.setId == selectedId }.takeIf { it >= 0 }?.let { workout.selectedSetIndexByExercise[key] = it }
+        }
         // Preserve the running rest's progress origin when changing a future preset.
         activeRestStartAtMs = restStartedAt
         workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(
@@ -1886,7 +1913,7 @@ class MainActivity : ComponentActivity() {
                 previewWorkout = null
                 showRoutine(workout.routine)
             } else {
-                showHome()
+                leaveActiveWorkoutPage()
             }
         }
 
@@ -1929,6 +1956,7 @@ class MainActivity : ComponentActivity() {
                         if (set.completed) {
                             set.performedReps = reps
                             set.repSource = SetRepSource.MANUAL
+                            set.unilateral = set.unilateral?.copy(watchReps = reps, watchRepSource = SetRepSource.MANUAL)
                         } else set.targetReps = reps
                     }
                 }
@@ -1964,6 +1992,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 beginWorkoutEdit(workout)
                 plannedSet.completed = false
+                plannedSet.unilateral = null
                 val current = workout.performedRepsByExercise[routineExercise.exercise.id] ?: 0
                 workout.performedRepsByExercise[routineExercise.exercise.id] =
                     (current - (plannedSet.performedReps ?: 0)).coerceAtLeast(0)
@@ -2235,7 +2264,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun formatActiveWeight(weightKg: Double?, usePounds: Boolean): String {
-        if (weightKg == null) return "체중"
+        if (weightKg == null) return "-"
         val value = if (usePounds) weightKg * 2.20462 else weightKg
         return cleanWeight(value)
     }
@@ -2243,10 +2272,16 @@ class MainActivity : ComponentActivity() {
     private fun requestSetCompletion(workout: ActiveWorkout, exercise: RoutineExercise, setIndex: Int, set: PlannedSet) {
         val revision = sessionStore.manualSetRevision(workout.sessionId, set.setId, set.attemptId).getOrNull() ?: return
         // A check tap just completes the set at its target; the actual count is edited in the set row afterwards.
-        completeWorkoutSet(workout, exercise, setIndex, set, set.targetReps, revision)
+        val count = set.unilateral?.takeIf { it.stage == dev.kyungmin.kcoach.core.UnilateralStage.OTHER_SIDE_WORKING }?.watchReps ?: set.targetReps
+        completeWorkoutSet(workout, exercise, setIndex, set, count, revision)
     }
 
     private fun requestAllSetsCompletion(workout: ActiveWorkout, exercise: RoutineExercise) {
+        // Bulk completion has no side intent; it must not bypass the unilateral decision boundary.
+        if (exercise.exercise.id in dev.kyungmin.kcoach.core.UnilateralExercises.ids || exercise.sets.any { it.unilateral != null }) {
+            Toast.makeText(this, "원암 운동은 한쪽씩 완료해 주세요", Toast.LENGTH_SHORT).show()
+            return
+        }
         val remaining = exercise.sets.withIndex().filter { !it.value.completed }
         if (remaining.isEmpty()) return
         val before = sessionStore.loadActive().getOrNull() ?: return
@@ -2302,7 +2337,7 @@ class MainActivity : ComponentActivity() {
         val saved = requireNotNull(transaction.snapshot)
         applySnapshotToWorkout(workout, saved)
         lastCompletedLiveKey = workout.lastCompletedSetKey
-        activeRestStartAtMs = saved.restEndAtMs - restSeconds * 1_000L
+        activeRestStartAtMs = if (saved.restEndAtMs > 0) saved.restEndAtMs - restSeconds * 1_000L else 0L
         activeRestEndAtMs = saved.restEndAtMs
         if (activeWorkout === workout && transaction.restStarted && !saved.paused) {
             sendWear(
@@ -2323,6 +2358,7 @@ class MainActivity : ComponentActivity() {
             if (currentScreen == Screen.ACTIVE) bumpWorkoutUi() else showActiveWorkout(forceRebuild = true)
             return true
         }
+        beginWorkoutEdit(workout)
         workout.restingPageIndex = null
         val previousExerciseId = workout.routine.exercises
             .getOrNull(workout.exerciseIndex)?.exercise?.id
@@ -2354,6 +2390,18 @@ class MainActivity : ComponentActivity() {
         return saveWorkoutChanges(workout, forceRebuild = true)
     }
 
+    /**
+     * List edits made while resting (add/replace exercise, add sets) rebuild the page from the execution cursor.
+     * Point the rest-time page back at what the user was looking at; the rest deadline itself is untouched.
+     */
+    private fun returnToBrowsedWorkoutPage(workout: ActiveWorkout, pageIndex: Int) {
+        if (activeWorkout !== workout) return showActiveWorkout(forceRebuild = true)
+        if ((activeRestEndAtMs > 0L || pausedRestRemainingMs > 0L) && pageIndex in workout.routine.exercises.indices) {
+            workout.restingPageIndex = pageIndex
+        }
+        showActiveWorkout(forceRebuild = true)
+    }
+
     private fun showWorkoutMenu(workout: ActiveWorkout) {
         val pageIndex = workout.restingPageIndex ?: workout.exerciseIndex
         val routineExercise = workout.routine.exercises.getOrNull(pageIndex) ?: return
@@ -2382,7 +2430,7 @@ class MainActivity : ComponentActivity() {
                     },
                     SheetItem(KIcon.Swap, "운동 대체", featured = true) {
                         dismiss()
-                        showExerciseAlternatives(workout.routine, pageIndex) { saveWorkoutChanges(workout, forceRebuild = true) }
+                        showExerciseAlternatives(workout.routine, pageIndex) { returnToBrowsedWorkoutPage(workout, pageIndex) }
                     },
                     SheetItem(KIcon.Plus, "운동 추가", featured = true) {
                         dismiss()
@@ -2391,7 +2439,7 @@ class MainActivity : ComponentActivity() {
                                 workout.routine.exercises += RoutineExercise(it, mutableListOf(PlannedSet(null, 10)))
                                 commitRunningRoutineEdit(workout.routine)
                             },
-                            onReturn = { showActiveWorkout(forceRebuild = true) },
+                            onReturn = { returnToBrowsedWorkoutPage(workout, pageIndex) },
                         )
                     },
                     SheetItem(KIcon.Trash, "운동 삭제", destructive = true) {
@@ -2412,6 +2460,21 @@ class MainActivity : ComponentActivity() {
     private fun showSetMenu(workout: ActiveWorkout, routineExercise: RoutineExercise, setIndex: Int) {
         val set = routineExercise.sets.getOrNull(setIndex) ?: return
         val setLabel = routineExercise.sets.workSetLabel(setIndex).let { if (it == "W") "웜업" else "${it}세트" }
+        // Keep Activity-owned edit callbacks outside the composable lambda.
+        val duplicateSet: () -> Unit = duplicate@{
+            val exerciseIndex = workout.routine.exercises.indexOfFirst { it === routineExercise }
+            if (exerciseIndex < 0) return@duplicate
+            if (activeWorkout === workout) {
+                editActivePlan(workout, PhonePlanEdit.DuplicateSet(exerciseIndex, setIndex))
+            } else {
+                beginWorkoutEdit(workout)
+                if (routineExercise.sets.duplicateAfter(setIndex) != null) saveWorkoutChanges(workout)
+            }
+        }
+        val removeSet: () -> Unit = {
+            val exerciseIndex = workout.routine.exercises.indexOfFirst { it === routineExercise }
+            if (exerciseIndex >= 0) workoutActions.onRemoveSet(exerciseIndex, setIndex)
+        }
         showSheet { dismiss ->
             var type by remember { mutableStateOf(set.setType) }
             var grip by remember { mutableStateOf(set.gripType) }
@@ -2475,24 +2538,8 @@ class MainActivity : ComponentActivity() {
                     ),
                 ),
                 actions = listOf(
-                    SheetAction("이전에 세트 추가", false) {
-                        dismiss()
-                        if (setIndex in routineExercise.sets.indices) {
-                            routineExercise.sets.add(setIndex.coerceIn(0, routineExercise.sets.size),
-                                PlannedSet(set.weightKg, set.targetReps))
-                            // syncWorkingSet skips resting, so a changed set list must be pushed explicitly.
-                            if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
-                        }
-                    },
-                    SheetAction("세트 삭제", true) {
-                        dismiss()
-                        if (routineExercise.sets.size > 1 && setIndex in routineExercise.sets.indices) {
-                            routineExercise.sets.removeAt(setIndex)
-                            workout.setIndex = workout.setIndex.coerceIn(0, routineExercise.sets.lastIndex)
-                            workout.selectedEditSetIndex = workout.selectedEditSetIndex.coerceAtMost(routineExercise.sets.lastIndex)
-                            if (saveWorkoutChanges(workout) && activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
-                        }
-                    },
+                    SheetAction("다음 세트로 복제", false) { dismiss(); duplicateSet() },
+                    SheetAction("세트 삭제", true) { dismiss(); removeSet() },
                 ),
             )
         }
@@ -2755,12 +2802,11 @@ class MainActivity : ComponentActivity() {
         val info = ExerciseInfoUi(
             name = exercise.name,
             muscles = exercise.muscles,
-            description = exerciseDescription(exercise) + "\n\n" +
-                dev.kyungmin.kcoach.core.ExerciseMeasurementContracts.explanation(exercise.id, exercise.name),
+            description = exerciseDescription(exercise),
             myRecord = listOf(
                 "● 나의 기록" to "이 운동이 포함된 루틴 ${matching.size}개\n계획된 총 세트 ${plannedSets}세트\n\n최근 루틴\n${matching.firstOrNull()?.name ?: "아직 기록 없음"}",
                 "● 최근 목표" to (matching.firstOrNull()?.exercises?.firstOrNull { it.exercise.id == exercise.id }?.sets?.firstOrNull()?.let { set ->
-                    "${set.weightKg?.let { cleanWeight(it) + "kg" } ?: "체중"} · ${set.targetReps}회"
+                    "${set.weightKg?.let { cleanWeight(it) + "kg" } ?: if (exercise.equipment == "맨몸") "체중" else "무게 미정"} · ${set.targetReps}회"
                 } ?: "기록이 쌓이면 표시돼요."),
             ),
             stats = listOf(
@@ -2771,7 +2817,7 @@ class MainActivity : ComponentActivity() {
             ),
             analysisNote = if (ExerciseTrackingProfiles.resolve(exercise.id, exercise.name).mode == TrackingMode.MANUAL_REQUIRED)
                 "실제 횟수를 폰이나 워치에서 입력해 주세요. 손목 신호로 횟수·다리 자세를 판정하지 않아요."
-                else "손목에서 관측한 움직임과 반복을 추정해요. 영상 확인과 별도 검증 전에는 자세의 정답으로 취급하지 않아요.",
+                else "",
         )
         showStandalone(ComposeView(this).apply {
             setContent {
@@ -2787,23 +2833,37 @@ class MainActivity : ComponentActivity() {
         active: ActiveWorkout?,
         announce: Boolean = true,
     ) {
-        if (from !in routine.exercises.indices || to !in routine.exercises.indices) return
+        if (from !in routine.exercises.indices || to !in routine.exercises.indices || from == to) return
+        active?.takeIf { it.routine === routine }?.let(::beginWorkoutEdit)
         val item = routine.exercises.removeAt(from)
         routine.exercises.add(to, item)
         active?.let {
             if (it.routine === routine) {
                 it.exerciseIndex = adjustedIndexAfterMove(it.exerciseIndex, from, to)
+                it.restingPageIndex = it.restingPageIndex?.let { page -> adjustedIndexAfterMove(page, from, to) }
             }
         }
         if (announce) Toast.makeText(this, "순서를 바꿨어요", Toast.LENGTH_SHORT).show()
     }
 
+    private fun finishRoutineMove(routine: WorkoutRoutine) {
+        if (!commitRunningRoutineEdit(routine)) return
+        if (routines.any { it === routine } && !saveRoutineLibrary()) return
+        Toast.makeText(this, "순서를 바꿨어요", Toast.LENGTH_SHORT).show()
+    }
+
     /** Saves and resyncs the watch when [routine] is the running workout's list, which edits alone do not do. */
-    private fun commitRunningRoutineEdit(routine: WorkoutRoutine) {
-        val workout = activeWorkout?.takeIf { it.routine === routine } ?: return
+    private fun commitRunningRoutineEdit(routine: WorkoutRoutine): Boolean {
+        val workout = activeWorkout?.takeIf { it.routine === routine } ?: return true
         if (workout.exerciseIndex >= routine.exercises.size) workout.exerciseIndex = max(0, routine.exercises.lastIndex)
-        workout.restingPageIndex = null
-        if (persistActiveWorkout(workout)) resyncActiveWorkoutToWatch(workout)
+        workout.routine.exercises.getOrNull(workout.exerciseIndex)?.let {
+            workout.setIndex = workout.setIndex.coerceIn(0, it.sets.lastIndex.coerceAtLeast(0))
+        }
+        // Editing the list during rest keeps the page and rest timer on screen; only a deleted page falls back to the executing exercise.
+        workout.restingPageIndex = workout.restingPageIndex?.takeIf { it in routine.exercises.indices }
+        val saved = persistActiveWorkout(workout)
+        if (saved) resyncActiveWorkoutToWatch(workout)
+        return saved
     }
 
     private fun removeExerciseWithUndo(routine: WorkoutRoutine, index: Int, active: ActiveWorkout?, onReturn: () -> Unit) {
@@ -2814,7 +2874,9 @@ class MainActivity : ComponentActivity() {
         }
         // No "are you sure": remove right away and leave a short window to take it back.
         val removed = routine.exercises[index]
-        val activeIndexes = active?.takeIf { it.routine === routine }?.let { Triple(it, it.exerciseIndex, it.setIndex) }
+        val runningBeforeRemoval = activeWorkout?.takeIf { it.routine === routine }
+        val removedBrowsedPage = runningBeforeRemoval?.restingPageIndex == index
+        runningBeforeRemoval?.let(::beginWorkoutEdit)
         routine.exercises.removeAt(index)
         active?.let {
             if (it.routine === routine) {
@@ -2822,14 +2884,29 @@ class MainActivity : ComponentActivity() {
                 if (it.exerciseIndex > index) it.exerciseIndex -= 1
                 else if (it.exerciseIndex >= routine.exercises.size) it.exerciseIndex = max(0, routine.exercises.lastIndex)
                 if (removedCurrent) it.setIndex = 0
+                // A removed exercise can be a rest-time page; keep browsing the same one when it was at or after it.
+                val page = it.restingPageIndex ?: return@let
+                it.restingPageIndex = when {
+                    page == index -> null
+                    page > index -> page - 1
+                    else -> page
+                }
             }
         }
         if (routines.any { it === routine }) saveRoutineLibrary()
-        commitRunningRoutineEdit(routine)
+        if (!commitRunningRoutineEdit(routine)) { onReturn(); return }
         overlays.showUndo(UndoNotice("${exercise.name}을(를) 삭제했어요") {
+            if (routine.exercises.any { item -> item.sets.any { set -> removed.sets.any { it.setId == set.setId } } }) return@UndoNotice
+            val running = activeWorkout?.takeIf { it.routine === routine }
+            val currentExercise = running?.let { routine.exercises.getOrNull(it.exerciseIndex) }
+            val currentPage = running?.restingPageIndex?.let { routine.exercises.getOrNull(it) }
+            running?.let(::beginWorkoutEdit)
             routine.exercises.add(index.coerceAtMost(routine.exercises.size), removed)
-            activeIndexes?.let { (workout, exerciseIndex, setIndex) ->
-                if (activeWorkout === workout) { workout.exerciseIndex = exerciseIndex; workout.setIndex = setIndex }
+            running?.let { workout ->
+                currentExercise?.let { current -> workout.exerciseIndex = routine.exercises.indexOfFirst { it === current } }
+                val page = currentPage ?: removed.takeIf { removedBrowsedPage &&
+                    (activeRestEndAtMs > 0L || pausedRestRemainingMs > 0L) }
+                workout.restingPageIndex = page?.let { current -> routine.exercises.indexOfFirst { it === current }.takeIf { it >= 0 } }
             }
             if (routines.any { it === routine }) saveRoutineLibrary()
             commitRunningRoutineEdit(routine)
@@ -2856,16 +2933,21 @@ class MainActivity : ComponentActivity() {
                     if (routine.exercises[index].sets.any { it.completed }) {
                         return@PickDialog Toast.makeText(this, "완료한 세트가 있는 운동은 대체할 수 없어요", Toast.LENGTH_SHORT).show()
                     }
-                    // A set identity is frozen to one exercise once it is sent to the watch; a swapped exercise needs fresh attempts.
+                    beginWorkoutEdit(running)
+                    // A swapped exercise starts fresh; partial unilateral results belong to the old exercise.
                     routine.exercises[index].sets.forEachIndexed { setIndex, set ->
                         running.analyses.remove(SetIdentity.key(current.id, setIndex, set.setId, set.attemptId))
                         set.attemptId = java.util.UUID.randomUUID().toString()
                         set.identityRequired = true
+                        set.performedReps = null
+                        set.repSource = null
+                        set.rpe = null
+                        set.unilateral = dev.kyungmin.kcoach.core.UnilateralExercises.initial(alternatives[which].id)
                     }
                 }
                 routine.exercises[index] = routine.exercises[index].copy(exercise = alternatives[which])
                 if (routines.any { it === routine }) saveRoutineLibrary()
-                commitRunningRoutineEdit(routine)
+                if (!commitRunningRoutineEdit(routine)) { onReturn(); return@PickDialog }
                 Toast.makeText(this, "${alternatives[which].name}(으)로 바꿨어요", Toast.LENGTH_SHORT).show()
                 onReturn()
             }
@@ -3040,11 +3122,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun showDetail(body: View, actions: View?, animateFromRight: Boolean = false) {
+    private fun showDetail(body: View, actions: View?, animateFromRight: Boolean = false, animateFromBottom: Boolean = false) {
         navVisible.value = false
         val frame = FrameLayout(this)
         frame.addView(body, FrameLayout.LayoutParams(-1, -1))
         actions?.let { frame.addView(it, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM)) }
+        if (animateFromBottom && root.childCount > 0) {
+            // Pulled up from the running bar: the new screen rises over the old one like a drawer.
+            if (detailTransitionRunning) {
+                root.removeAllViews()
+                root.addView(frame, FrameLayout.LayoutParams(-1, -1))
+                detailTransitionRunning = false
+                return
+            }
+            detailTransitionRunning = true
+            val previous = root.getChildAt(root.childCount - 1)
+            val heightPx = root.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+            root.addView(frame, FrameLayout.LayoutParams(-1, -1))
+            frame.translationY = heightPx.toFloat()
+            frame.post {
+                if (frame.parent !== root) return@post
+                frame.animate()
+                    .translationY(0f)
+                    .setDuration(Motion.PANEL_MS.toLong())
+                    .setInterpolator(panelInterpolator)
+                    .withEndAction {
+                        if (previous.parent === root) root.removeView(previous)
+                        frame.translationY = 0f
+                        detailTransitionRunning = false
+                    }
+                    .start()
+            }
+            return
+        }
         if (animateFromRight && root.childCount > 0) {
             if (detailTransitionRunning) {
                 root.removeAllViews()
@@ -3248,6 +3358,7 @@ class MainActivity : ComponentActivity() {
                     setId = set.setId,
                     attemptId = set.attemptId,
                     identityRequired = set.identityRequired,
+                    unilateral = set.unilateral ?: dev.kyungmin.kcoach.core.UnilateralExercises.initial(exercise.exercise.id, set.completed),
                 )
             }
         },
@@ -3296,10 +3407,9 @@ class MainActivity : ComponentActivity() {
                 detail = if (saved) "" else "snapshot_save_failed",
             ),
         )
-        val hasRollback = pendingWorkoutRollback?.first === workout
         finishWorkoutEdit(workout, saved)
         if (!saved) {
-            if (!hasRollback) sessionStore.loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }?.let {
+            sessionStore.loadActive().getOrNull()?.takeIf { it.sessionId == workout.sessionId }?.let {
                 applySnapshotToWorkout(workout, it)
                 bumpWorkoutUi()
             }
@@ -3345,6 +3455,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applySnapshotToWorkout(workout: ActiveWorkout, snapshot: WorkoutSnapshot) {
+        val browsedSetIds = workout.restingPageIndex?.let { workout.routine.exercises.getOrNull(it)?.sets?.map { set -> set.setId } }.orEmpty()
         val currentLayout = workout.routine.exercises.flatMapIndexed { ei, item -> item.sets.mapIndexed { si, set ->
             Triple(set.setId, item.exercise.id, ei to si)
         } }
@@ -3366,7 +3477,8 @@ class MainActivity : ComponentActivity() {
             workout.setIndexByExercise.clear()
             workout.selectedSetIndexByExercise.clear()
             workout.scrollYByExercise.clear()
-            workout.analyses.clear()
+            val validAnalysisKeys = snapshot.plannedSets.map { SetIdentity.key(it.exerciseId, it.setIndex, it.setId, it.attemptId) }.toSet()
+            workout.analyses.keys.retainAll(validAnalysisKeys)
         }
         snapshot.plannedSets.forEach { savedSet ->
             val exercise = workout.routine.exercises.getOrNull(savedSet.exerciseIndex) ?: return@forEach
@@ -3375,6 +3487,7 @@ class MainActivity : ComponentActivity() {
             exercise.sets.getOrNull(savedSet.setIndex)?.apply {
                 targetReps = savedSet.targetReps
                 weightKg = savedSet.weightKg
+                unilateral = savedSet.unilateral
                 completed = savedSet.completed
                 performedReps = savedSet.performedReps
                 repSource = savedSet.repSource
@@ -3387,9 +3500,9 @@ class MainActivity : ComponentActivity() {
             }
         }
         workout.exerciseIndex = snapshot.exerciseIndex.coerceAtMost(workout.routine.exercises.size)
-        if (snapshot.restEndAtMs <= 0L && snapshot.pausedRestRemainingMs <= 0L || currentLayout != savedLayout) {
-            workout.restingPageIndex = null
-        }
+        workout.restingPageIndex = if (snapshot.restEndAtMs > 0L || snapshot.pausedRestRemainingMs > 0L) {
+            snapshot.plannedSets.firstOrNull { it.setId in browsedSetIds }?.exerciseIndex
+        } else null
         workout.setIndex = snapshot.setIndex
         workout.performedRepsByExercise.clear()
         workout.performedRepsByExercise.putAll(snapshot.performedReps)

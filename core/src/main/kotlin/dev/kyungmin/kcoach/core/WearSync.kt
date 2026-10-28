@@ -153,6 +153,14 @@ object WearSync {
         return fields.joinToString("|")
     }
 
+    /** Index 24 is a durable per-set arm phase; older readers safely ignore it. */
+    fun withUnilateral(payload: String, progress: UnilateralProgress?): String {
+        val fields = parse(payload).toMutableList()
+        while (fields.size < 25) fields.add(when (fields.size) { 10, 12 -> "0"; else -> "" })
+        fields[24] = progress?.encode().orEmpty()
+        return fields.joinToString("|")
+    }
+
     fun hello(device: String): String = listOf("1", device, System.currentTimeMillis()).joinToString("|")
 
     fun heartbeat(device: String, phoneViewing: Boolean = false): String =

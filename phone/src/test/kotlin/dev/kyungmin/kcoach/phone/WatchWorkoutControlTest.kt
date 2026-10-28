@@ -234,4 +234,27 @@ class WatchWorkoutControlTest {
             controller.receive(edit.copy(commandId = "no-next", which = "NEXT").encode(), 500).getOrThrow().ack.status)
     }
 
+    @Test fun zeroSecondRestPauseIsResumableAndLateBoundaryPauseFollowsTheSameNextSet() {
+        val store = restingStore()
+        val before = store.loadActive().getOrThrow()!!
+        val pause = WatchWorkoutControl("zero-pause", WatchWorkoutAction.REST_PAUSE, "watch-session", "set-1", "attempt-1",
+            deltaSeconds = 0, restSeconds = 60, restEndAtMs = 0, seq = 1, pausedRestRemainingMs = 0)
+        val frozen = store.applyWatchControl(pause, before.restEndAtMs).getOrThrow().snapshot!!
+        assertEquals(1L, frozen.pausedRestRemainingMs)
+        val resume = pause.copy(commandId = "zero-resume", action = WatchWorkoutAction.REST_RESUME,
+            restEndAtMs = before.restEndAtMs + 1, pausedRestRemainingMs = null, seq = 2)
+        assertEquals(WatchWorkoutControlStatus.APPLIED, store.applyWatchControl(resume, before.restEndAtMs).getOrThrow().ack.status)
+        val working = store.advanceAfterRest(before.restEndAtMs + 2).getOrThrow()!!
+        val late = store.applyWatchControl(pause.copy(commandId = "boundary-pause", seq = 3), before.restEndAtMs + 3).getOrThrow()
+        assertEquals(WatchWorkoutControlStatus.APPLIED, late.ack.status)
+        assertTrue(late.snapshot!!.paused)
+        assertEquals(0L, late.snapshot!!.pausedRestRemainingMs)
+        assertEquals(working.plannedSets, late.snapshot!!.plannedSets)
+        val continued = store.applyWatchControl(resume.copy(commandId = "boundary-resume", seq = 4), before.restEndAtMs + 4).getOrThrow()
+        assertEquals(WatchWorkoutControlStatus.APPLIED, continued.ack.status)
+        assertFalse(continued.snapshot!!.paused)
+        assertEquals(WorkoutPhase.WORKING, continued.snapshot!!.phase)
+        assertEquals(working.plannedSets, continued.snapshot!!.plannedSets)
+    }
+
 }

@@ -10,13 +10,13 @@ class ExerciseTrackingProfileTest {
     @Test
     fun everyCatalogExerciseResolvesToAnExplicitMotionContract() {
         val ids = ExerciseCapabilityMatrix.standardExerciseIds()
-        assertEquals(205, ids.size)
+        assertEquals(229, ids.size)
 
         val profiles = ids.map { exerciseId ->
             ExerciseTrackingProfiles.resolve(exerciseId)
         }
         assertEquals(ids.toSet(), profiles.map { it.exerciseId }.toSet())
-        assertEquals(162, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
+        assertEquals(161, profiles.count { it.mode != TrackingMode.MANUAL_REQUIRED })
         assertEquals(43, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
         profiles.filter { it.mode != TrackingMode.MANUAL_REQUIRED }.forEach { profile ->
             assertNotEquals(MotionFamily.UNOBSERVABLE_MANUAL, profile.family)
@@ -54,7 +54,7 @@ class ExerciseTrackingProfileTest {
 
     @Test
     fun unregisteredExerciseNamesNeverGrantAutomaticMeasurement() {
-        listOf("unregistered_spider_curl" to "덤벨 스파이더 컬", "one_arm_row" to "원 암 로우",
+        listOf("unregistered_spider_curl" to "덤벨 스파이더 컬", "one_arm_row" to "원암 로우",
             "cable_lateral_raise" to "케이블 레터럴 레이즈", "custom_exercise" to "새 사용자 운동")
             .forEach { (id, name) ->
                 assertEquals(TrackingMode.MANUAL_REQUIRED, ExerciseTrackingProfiles.resolve(id, name).mode)

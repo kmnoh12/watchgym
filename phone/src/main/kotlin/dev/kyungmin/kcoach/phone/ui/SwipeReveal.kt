@@ -39,7 +39,7 @@ fun SwipeRevealDelete(
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val revealPx = with(density) { 88.dp.toPx() }
+    val revealPx = with(density) { 79.dp.toPx() }
     val deletePullPx = with(density) { 64.dp.toPx() }
     val offset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
@@ -62,7 +62,7 @@ fun SwipeRevealDelete(
             ) {
                 Text(
                     "삭제", color = KColors.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.width(88.dp),
+                    modifier = Modifier.width(79.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
