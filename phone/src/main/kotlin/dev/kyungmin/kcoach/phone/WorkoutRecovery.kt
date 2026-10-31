@@ -16,7 +16,7 @@ internal fun restoreWorkoutRoutine(snapshot: WorkoutSnapshot, template: WorkoutR
             id = first.exerciseId, name = first.exerciseName.ifBlank { original?.name ?: first.exerciseId },
             muscles = first.exerciseMuscles.ifBlank { original?.muscles.orEmpty() },
             bodyCategory = first.bodyCategory.ifBlank { original?.bodyCategory ?: "기타" },
-            equipment = first.equipment.ifBlank { original?.equipment ?: "기타" },
+            equipment = if (first.exerciseId in setOf("weighted_dip", "weighted_pull_up")) "기타" else first.equipment.ifBlank { original?.equipment ?: "기타" },
             favorite = original?.favorite ?: false, pattern = first.pattern.ifBlank { original?.pattern.orEmpty() },
             family = first.family.ifBlank { original?.family.orEmpty() },
         )

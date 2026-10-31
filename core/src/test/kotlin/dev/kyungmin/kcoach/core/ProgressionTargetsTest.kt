@@ -139,7 +139,7 @@ class ProgressionTargetsTest {
         assertEquals(20.0, next(p, log(p), speed = ProgressionSpeed.FAST, increment = IncrementCandidate(10.0, true))!!.single().weightKg)
         assertEquals(30.0, next(p, log(p), speed = ProgressionSpeed.FAST, increment = IncrementCandidate(10.0, false))!!.single().weightKg)
     }
-    @Test fun machineDefaultsUseFiveOrSmallestObservedGapAndConfirmedValueWins() {
+    @Test fun machineDefaultsUseFiveOrObservedStepsAndConfirmedValueWins() {
         for (equipment in listOf("머신", "케이블", "핀 머신")) {
             val p = plan(20.0 to 10).let { it.copy(key = it.key.copy(equipment = equipment)) }
             for (weights in listOf(emptyList(), listOf(20.0, 20.0))) {
@@ -148,13 +148,37 @@ class ProgressionTargetsTest {
                 assertEquals(25.0, next(p, log(p, 1), log(p, 2), increment = increment)!!.single().weightKg)
             }
             val observed = ProgressionDefaults.increment(equipment, listOf(40.0, 20.0, 30.0, 32.5, 30.0))
-            assertEquals(IncrementCandidate(2.5, false), observed)
-            assertEquals(22.5, next(p, log(p, 1), log(p, 2), increment = observed)!!.single().weightKg)
+            assertEquals(IncrementCandidate(2.5, false, listOf(20.0, 30.0, 32.5, 40.0)), observed)
+            assertEquals(30.0, next(p, log(p, 1), log(p, 2), increment = observed)!!.single().weightKg)
             val confirmed = ProgressionDefaults.increment(equipment, listOf(20.0, 30.0), confirmedKg = 1.0)
-            assertEquals(IncrementCandidate(1.0, false), confirmed)
+            assertEquals(IncrementCandidate(1.0, false, confirmed = true), confirmed)
             assertEquals(21.0, next(p, log(p, 1), log(p, 2), increment = confirmed)!!.single().weightKg)
         }
         assertEquals(IncrementCandidate(null, true), ProgressionDefaults.increment("unknown", listOf(20.0, 30.0)))
+    }
+    @Test fun irregularMachineStagesUseNearestNextInBothDirectionsAndHoldAtUnknownEnds() {
+        val increment = ProgressionDefaults.increment("머신", listOf(54.0, 27.0, 35.0, 45.0, 35.0))
+        assertEquals(35.0, ProgressionDefaults.nextWeight(27.0, increment, false))
+        assertEquals(45.0, ProgressionDefaults.nextWeight(35.0, increment, false))
+        assertEquals(54.0, ProgressionDefaults.nextWeight(45.0, increment, false))
+        assertEquals(54.0, ProgressionDefaults.nextWeight(54.0, increment, false))
+        assertEquals(35.0, ProgressionDefaults.nextWeight(45.0, increment, true))
+        assertEquals(27.0, ProgressionDefaults.nextWeight(27.0, increment, true))
+        val p = plan(35.0 to 10).let { it.copy(key = it.key.copy(equipment = "머신")) }
+        assertEquals(45.0, next(p, log(p, 1), log(p, 2), increment = increment)!!.single().weightKg)
+        assertEquals(36.0, ProgressionDefaults.nextWeight(35.0,
+            ProgressionDefaults.increment("머신", listOf(27.0, 35.0, 45.0, 54.0), 1.0), false))
+        assertEquals(37.5, ProgressionDefaults.nextWeight(35.5,
+            ProgressionDefaults.increment("덤벨", confirmedKg = 2.0), false))
+    }
+    @Test fun generatedWeightsSnapAndUniformAndConfirmedStepsRemainSupported() {
+        assertEquals(65.0, ProgressionDefaults.roundWeight(63.2, "머신"))
+        assertEquals(64.0, ProgressionDefaults.roundWeight(63.2, "덤벨"))
+        assertEquals(IncrementCandidate(2.0, false), ProgressionDefaults.increment("바벨"))
+        assertEquals(IncrementCandidate(10.0, false), ProgressionDefaults.increment("머신", listOf(20.0, 30.0, 40.0)))
+        assertEquals(65.0, ProgressionDefaults.nextWeight(58.2, IncrementCandidate(5.0, false), false))
+        assertEquals(0.0, ProgressionDefaults.nextWeight(2.0, IncrementCandidate(5.0, false), true))
+        assertEquals(IncrementCandidate(5.0, false), ProgressionDefaults.increment("머신", listOf(Double.NaN, -1.0)))
     }
     @Test fun legacyAndExtendedCodecRoundTrip() {
         assertEquals(LoggedSet(60.0, 10), ExerciseHistoryCodec.decode("bench\t1\t60:10").single().sets.single())

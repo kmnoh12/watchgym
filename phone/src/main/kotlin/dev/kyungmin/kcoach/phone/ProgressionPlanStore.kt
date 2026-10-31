@@ -37,7 +37,7 @@ internal class ProgressionPlanStore(private val context: Context) {
             val plan = ProgressionPlan(ProgressionKey(routine.id, item.exercise.id, index, item.exercise.equipment), sets, item.exercise.pattern, load(item))
             val increment = ProgressionIncrementStore(context).candidate(item.exercise.id, item.exercise.equipment,
                 history.filter { it.exerciseId == item.exercise.id && it.equipment == item.exercise.equipment }.flatMap { it.sets }.mapNotNull { it.weightKg }).getOrThrow()
-            val token = "$evidenceToken/${settings.speed.name}/${increment.kg}/${increment.needsConfirmation}"
+            val token = "$evidenceToken/${settings.speed.name}/${increment.kg}/${increment.needsConfirmation}/${increment.observedSteps}/${increment.confirmed}"
             val output = if (saved?.optString("source") == token || (saved != null && !sameLayout)) null
                 else ProgressionEngine().nextTargets(plan, history, settings, increment)
             val manual = sets.mapIndexed { i, target ->
@@ -97,6 +97,7 @@ internal class ProgressionPlanStore(private val context: Context) {
     private fun load(id: String, name: String, pattern: String, equipment: String, weights: List<Double?>): ProgressionLoad = when {
         pattern in setOf("plank", "time", "duration") -> ProgressionLoad.TIME
         id.contains("assisted") || name.contains("어시스트") || name.contains("어시스티드") -> ProgressionLoad.ASSISTANCE
+        id == "weighted_dip" || id == "weighted_pull_up" -> ProgressionLoad.WEIGHTED_BODYWEIGHT
         equipment == "맨몸" && weights.all { (it ?: 0.0) == 0.0 } -> ProgressionLoad.BODYWEIGHT
         equipment == "맨몸" -> ProgressionLoad.WEIGHTED_BODYWEIGHT
         else -> ProgressionLoad.EXTERNAL

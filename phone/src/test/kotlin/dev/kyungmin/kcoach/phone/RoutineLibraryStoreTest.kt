@@ -44,6 +44,27 @@ class RoutineLibraryStoreTest {
         assertTrue(original.routines.all { it.lastPerformed == "기록 없음" })
     }
 
+    @Test fun legacyRestMigrationChangesOnlyNinetyAndCorrectsWeightedDipDefinition() {
+        val store = RoutineLibraryStore(file())
+        store.load().getOrThrow()
+        val items = listOf("chest_press", "curl", "").flatMap { pattern ->
+            listOf(0, 45, 89, 90, 91, 150).map { rest ->
+                RoutineExercise(custom().copy(pattern = pattern), mutableListOf(PlannedSet(27.0, 10, restSeconds = 90)), rest)
+            }
+        } + RoutineExercise(WorkoutData.catalog.single { it.id == "weighted_dip" }.copy(equipment = "맨몸"), mutableListOf(PlannedSet(5.0, 10)), 90)
+        val routine = library().routines.single().copy(exercises = items.toMutableList())
+        store.save(RoutineLibrary(listOf(routine), emptyList())).getOrThrow()
+        val migrated = RoutineLibraryStore(file()).load().getOrThrow()!!
+        val restored = migrated.routines.single().exercises
+        items.zip(restored).forEach { (before, after) ->
+            assertEquals(if (before.restSeconds == 90) ExerciseDefaults.restSeconds(before.exercise) else before.restSeconds, after.restSeconds)
+            assertEquals(before.sets, after.sets)
+        }
+        assertEquals("기타", restored.last().exercise.equipment)
+        store.save(migrated).getOrThrow()
+        assertEquals(migrated, RoutineLibraryStore(file()).load().getOrThrow())
+    }
+
     @Test fun emptySavedLibraryDoesNotBecomeDefaults() {
         val store = RoutineLibraryStore(file())
         store.load().getOrThrow()

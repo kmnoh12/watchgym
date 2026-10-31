@@ -71,8 +71,8 @@ class PhoneWearBridge(private val context: Context) {
 
     fun sendComplete(sessionId: String) = sendLifecycle("COMPLETE", sessionId)
 
-    fun sendHeartbeat(phoneViewing: Boolean = false) {
-        sendPath(WearSync.PATH_HEARTBEAT, WearSync.heartbeat("phone", phoneViewing))
+    fun sendHeartbeat() {
+        sendPath(WearSync.PATH_HEARTBEAT, WearSync.heartbeat("phone"))
         retryPendingCommand()
     }
 

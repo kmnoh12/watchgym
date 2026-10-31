@@ -129,7 +129,7 @@ object ExerciseMeasurementContracts {
     fun resolve(exerciseId: String): ExerciseMeasurementContract {
         val id = ExerciseMotionCatalog.normalizeExerciseId(exerciseId)
         return standard[id] ?: when (id) {
-            "squat", "barbell_squat", "front_squat", "goblet_squat", "smith_squat" -> ExerciseMeasurementContract(
+            "squat", "barbell_squat", "front_squat", "goblet_squat", "dumbbell_goblet_squat", "smith_squat" -> ExerciseMeasurementContract(
                 MeasurementRecipe.SQUAT, "전신 카메라 확인 필요. 워치는 손목 주기 신호로 자동 추정해요.")
             "push_up" -> ExerciseMeasurementContract(MeasurementRecipe.PUSH_UP,
                 "맨몸 푸시업. 손목이 바닥에 고정돼 워치는 전완 기울기 변화를 읽어요. 카메라 보정으로 횟수를 확인하세요.")

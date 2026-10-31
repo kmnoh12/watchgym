@@ -34,7 +34,7 @@ class SetEndGate(private val silenceNs: Long = 3_000_000_000L) {
         const val PAUSE_BEFORE_TARGET_NS = 7_000_000_000L
 
         /** Landing exactly on the planned reps: the lifter is done, so a short stillness closes the set. */
-        const val TARGET_HIT_WAIT_NS = 1_500_000_000L
+        const val TARGET_HIT_WAIT_NS = 1_200_000_000L
 
         /**
          * How long without a rep ends the set: the longer mid-set pause until [targetReps] is reached,

@@ -36,7 +36,7 @@ class WorkoutDataTest {
     @Test
     fun `exercise catalog is normalized and category ready`() {
         val ids = WorkoutData.catalog.map { it.id }
-        assertEquals(229, ids.size)
+        assertEquals(252, ids.size)
         assertEquals(ids.size, ids.distinct().size)
         WorkoutData.catalog.forEach { exercise ->
             assertTrue(exercise.id, exercise.bodyCategory in dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyOrder)
@@ -72,8 +72,7 @@ class WorkoutDataTest {
             "single_arm_machine_seated_row", "single_arm_high_row_machine", "single_arm_plate_loaded_row",
             "single_arm_machine_pulldown_pin", "single_arm_machine_pulldown_plate", "single_arm_reverse_pec_deck", "single_arm_cable_overhead_extension",
             "single_arm_cable_curl", "single_arm_dumbbell_preacher_curl", "one_arm_cable_lateral",
-            "single_arm_bayesian_curl",
-            "single_arm_cable_kickback",
+            "single_arm_bayesian_curl", "kickback_cable",
             "single_arm_dumbbell_kickback",
             "single_arm_chest_supported_dumbbell_row",
             "single_arm_machine_lateral_raise",
@@ -81,7 +80,7 @@ class WorkoutDataTest {
             "single_arm_cable_front_raise")
         for (id in ids) {
             val definition = WorkoutData.catalog.single { it.id == id }
-            assertTrue(id, definition.name.replace(" ", "").contains("원암"))
+            if (id != "kickback_cable") assertTrue(id, definition.name.replace(" ", "").contains("원암"))
             assertTrue(id, definition.pattern.isNotBlank() && definition.family.isNotBlank())
             assertFalse(id, ExerciseMeasurementContracts.resolve(id).recipe == MeasurementRecipe.MANUAL)
             assertFalse(id, ExerciseTrackingProfiles.resolve(id).family == MotionFamily.UNOBSERVABLE_MANUAL)
@@ -99,9 +98,11 @@ class WorkoutDataTest {
         }
         assertEquals(StartWristOrientationPolicy.candidate("external_rotation"),
             StartWristOrientationPolicy.candidate("single_arm_cable_external_rotation"))
-        val bases = listOf("bayesian_curl", "kickback_cable", "kickback_dumbbell", "chest_supported_dumbbell_row",
+        assertEquals("kickback_cable", ExerciseMotionCatalog.normalizeExerciseId("single_arm_cable_kickback"))
+        assertEquals("케이블 트라이셉스 킥백", WorkoutData.catalog.single { it.id == "kickback_cable" }.name)
+        val bases = listOf("bayesian_curl", "kickback_dumbbell", "chest_supported_dumbbell_row",
             "machine_lateral_raise", "dumbbell_lateral_raise", "cable_front_raise")
-        val added = listOf("single_arm_bayesian_curl", "single_arm_cable_kickback", "single_arm_dumbbell_kickback",
+        val added = listOf("single_arm_bayesian_curl", "single_arm_dumbbell_kickback",
             "single_arm_chest_supported_dumbbell_row", "single_arm_machine_lateral_raise",
             "single_arm_dumbbell_lateral_raise", "single_arm_cable_front_raise")
         bases.zip(added).forEach { (base, variant) ->
@@ -156,7 +157,7 @@ class WorkoutDataTest {
     @Test
     fun `torso rotation machine requires manual input rather than borrowing wrist rotation counting`() {
         val entry = WorkoutData.catalog.single { it.id == "machine_torso_rotation" }
-        assertEquals("머신 토르소 로테이션(핀식)", entry.name)
+        assertEquals("머신 토르소 로테이션", entry.name)
         assertEquals("코어", entry.bodyCategory)
         assertEquals("core_rotation", entry.pattern)
         assertEquals("머신", entry.equipment)

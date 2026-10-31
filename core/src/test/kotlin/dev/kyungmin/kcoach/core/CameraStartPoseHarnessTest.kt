@@ -70,7 +70,7 @@ class CameraStartPoseHarnessTest {
                 world[index] = world[index].copy(x = -joint[0], y = -joint[1], z = -joint[2])
             }
         }
-        if (c.id == "external_rotation") {
+        if (c.id in setOf("external_rotation", "single_arm_cable_external_rotation")) {
             // The thumbnail's inward horizontal forearm represents forward reach in 3D,
             // not a wrist crossing through the chest in the frontal plane.
             for ((elbow, wrist) in listOf(13 to 15, 14 to 16)) {

@@ -133,7 +133,7 @@ fun ExerciseBrowser(
 
     val shown = remember(catalog) {
         catalog.flatMap { e ->
-            dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodies(e.exercise.bodyCategory, e.exercise.pattern).map { b ->
+            dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodies(e.exercise.bodyCategory, e.exercise.pattern, e.exercise.id).map { b ->
                 if (b == e.exercise.bodyCategory) e else {
                     val (order, title) = dev.kyungmin.kcoach.core.ExerciseTaxonomy.section(b, e.exercise.pattern)
                     LibraryEntry(e.exercise, order, title, dev.kyungmin.kcoach.core.ExerciseTaxonomy.bodyRank(b), b)

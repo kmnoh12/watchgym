@@ -32,6 +32,10 @@ internal class RestPill(context: Context, private val skip: Boolean) : View(cont
             invalidate()
         }
 
+    /** Replaces the rest labels: the left pill becomes a yellow action, the right one a plain "skip"-style pill. */
+    var caption: String? = null
+        set(value) { if (field == value) return; field = value; contentDescription = describe(); invalidate() }
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.LEFT }
     private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL_AND_STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
@@ -46,7 +50,7 @@ internal class RestPill(context: Context, private val skip: Boolean) : View(cont
         contentDescription = describe()
     }
 
-    private fun describe() = if (skip) "건너뛰기" else if (resume >= .5f) "계속" else "정지"
+    private fun describe() = caption ?: if (skip) "건너뛰기" else if (resume >= .5f) "계속" else "정지"
 
     private fun pressTo(target: Float) {
         pressAnimator?.cancel()
@@ -97,9 +101,13 @@ internal class RestPill(context: Context, private val skip: Boolean) : View(cont
         fill.colorFilter = filter; label.colorFilter = filter; icon.colorFilter = filter
         canvas.save()
         canvas.scale(scale, scale, cx, cy)
-        fill.color = if (skip) WatchWorkoutFace.CARD else blend(WatchWorkoutFace.CARD, WatchWorkoutFace.YELLOW, resume)
+        val action = caption != null && !skip
+        fill.color = if (action) WatchWorkoutFace.YELLOW else if (skip) WatchWorkoutFace.CARD else blend(WatchWorkoutFace.CARD, WatchWorkoutFace.YELLOW, resume)
         canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), 20 * k, 20 * k, fill)
-        if (skip) {
+        if (caption != null) {
+            if (action) layer(canvas, k, cy, caption!!, Icon.PLAY, Color.rgb(36, 26, 0), Typeface.DEFAULT_BOLD, 1f, 1f)
+            else layer(canvas, k, cy, caption!!, Icon.SKIP, WatchWorkoutFace.WHITE, medium, 1f, 1f)
+        } else if (skip) {
             layer(canvas, k, cy, "건너뛰기", Icon.SKIP, WatchWorkoutFace.WHITE, medium, 1f, 1f)
         } else {
             // The two faces of the button cross-fade and scale between 80 and 100 %.

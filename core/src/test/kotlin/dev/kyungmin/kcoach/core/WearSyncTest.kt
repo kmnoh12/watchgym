@@ -5,6 +5,15 @@ import kotlin.test.assertEquals
 
 class WearSyncTest {
     @Test
+    fun `heartbeat contains only connection fields`() {
+        val fields = WearSync.parse(WearSync.heartbeat("phone"))
+        assertEquals(3, fields.size)
+        assertEquals("1", fields[0])
+        assertEquals("phone", fields[1])
+        check(fields[2].toLong() > 0L)
+    }
+
+    @Test
     fun `live state exposes actual personal profile use without shifting legacy fields`() {
         val fields = WearSync.parse(
             WearSync.liveState(

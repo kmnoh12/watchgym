@@ -128,11 +128,11 @@ class ProfiledMotionRepDetectorTest {
     @Test
     fun profileCatalogHasOneExplicitAlgorithmForEveryExerciseAndManualLowerBody() {
         val ids = ExerciseCapabilityMatrix.standardExerciseIds()
-        assertEquals(229, ids.size)
+        assertEquals(252, ids.size)
         val profiles = ids.map { ExerciseTrackingProfiles.resolve(it) }
-        assertEquals(229, profiles.map { it.exerciseId }.toSet().size)
-        assertEquals(161, profiles.count { it.family != MotionFamily.UNOBSERVABLE_MANUAL })
-        assertEquals(43, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
+        assertEquals(252, profiles.map { it.exerciseId }.toSet().size)
+        assertEquals(206, profiles.count { it.family != MotionFamily.UNOBSERVABLE_MANUAL })
+        assertEquals(46, profiles.count { it.mode == TrackingMode.MANUAL_REQUIRED })
         assertTrue(profiles.filter { it.mode != TrackingMode.MANUAL_REQUIRED }.all {
             it.id == it.family.sharedAlgorithmId
         })

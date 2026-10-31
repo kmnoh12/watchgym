@@ -64,7 +64,7 @@ class ProgressionEngine {
             // Waiting at the heaviest successful group blocks progression of lighter groups.
             if (streak < settings.speed.confirmations) return targets
             if (plan.load == ProgressionLoad.BODYWEIGHT || increment.needsConfirmation || increment.kg == null || weight == null) return targets
-            val nextWeight = if (plan.load == ProgressionLoad.ASSISTANCE) (weight - increment.kg).coerceAtLeast(0.0) else weight + increment.kg
+            val nextWeight = ProgressionDefaults.nextWeight(weight, increment, plan.load == ProgressionLoad.ASSISTANCE)
             if (nextWeight == weight) return targets
             indices.forEach { i -> targets[i] = targets[i].copy(weightKg = nextWeight,
                 targetReps = targets[i].lowerReps ?: ProgressionDefaults.lower(plan.pattern, targets[i].upperReps!!)) }

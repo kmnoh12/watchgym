@@ -6,6 +6,21 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CatalogExpansionTest {
+    @Test fun barbellPulloverSharesDumbbellMeasurementAndCameraRouting() {
+        val dumbbell = ExerciseTrackingProfiles.resolve("dumbbell_pullover")
+        val barbell = ExerciseTrackingProfiles.resolve("barbell_pullover")
+        assertEquals(MotionFamily.MULTI_AXIS_RETURN, barbell.family)
+        assertEquals(dumbbell, barbell.copy(exerciseId = dumbbell.exerciseId, label = dumbbell.label))
+        val contract = ExerciseMeasurementContracts.resolve("barbell_pullover")
+        assertEquals(MeasurementRecipe.PULLOVER, contract.recipe)
+        assertEquals(ExerciseMeasurementContracts.resolve("dumbbell_pullover").cycleDescription, contract.cycleDescription)
+        assertTrue(contract.startDescription.contains("바벨"))
+        for (left in listOf(true, false)) {
+            assertEquals(CameraMotion.forExercise("dumbbell_pullover"), CameraMotion.forExercise("barbell_pullover"))
+            assertEquals(CameraMotion.PULLOVER_REACH, CameraCaptureGuide.forExercise("barbell_pullover", left).metric)
+        }
+    }
+
     @Test fun newWristOnlyRecipesNeverFallBackToAnUnrelatedCameraCounter() {
         val expected = mapOf(
             "conventional_deadlift" to MeasurementRecipe.LOADED_HINGE,

@@ -37,6 +37,7 @@ barbell_row,바벨 로우,등,바벨,기존,등록됨,PULL_RETURN,CYCLE_AXIS_RET
 one_arm_dumbbell_row,원암 덤벨 로우,등,덤벨,기존,등록됨,PULL_RETURN,CYCLE_AXIS_RETURN,CYCLE_AXIS_RETURN,B,,A 실측(MM-Fit/사용),현재 코드 유지
 lying_tbar_row,라잉 티바 로우,등,머신,기존,등록됨,PULL_RETURN,CYCLE_AXIS_RETURN,CYCLE_AXIS_RETURN,B,,A 실측(MM-Fit/사용),현재 코드 유지
 dumbbell_pullover,덤벨 풀오버,등/가슴,덤벨,기존,등록됨,MULTI_AXIS_RETURN,MULTI_AXIS_RETURN,MULTI_AXIS_RETURN,B,,C 추론만,현재 코드 유지
+barbell_pullover,라잉 바벨 풀오버,가슴/등,바벨,추가,등록됨,MULTI_AXIS_RETURN,MULTI_AXIS_RETURN,MULTI_AXIS_RETURN,B,,C 추론만,덤벨 풀오버와 같은 공통 측정; 바벨 그립 폭 기록
 pull_up,풀업,등,맨몸,기존,등록됨,UNOBSERVABLE_MANUAL,CYCLE_AXIS_RETURN,CYCLE_AXIS_RETURN,B,Y,C 추론만,현재 코드 유지
 assisted_pull_up,어시스티드 풀업,등,머신,기존,등록됨,UNOBSERVABLE_MANUAL,UNOBSERVABLE_MANUAL,UNOBSERVABLE_MANUAL,D,,수동(관측 불가·한계),현재 코드 유지
 chin_up,친업,등,맨몸,신규,미등록,UNOBSERVABLE_MANUAL,,CYCLE_AXIS_RETURN,B,Y,C 추론만,풀업 계열
@@ -121,7 +122,8 @@ skullcrusher_dumbbell,스컬크러셔(덤벨),삼두,덤벨,신규,미등록,PRE
 close_grip_bench_press,클로즈그립 벤치프레스,삼두,바벨,신규,미등록,PRESS_RETURN,,PRESS_RETURN,B,,C 추론만,CSV 제안 유지(검증된 형제 운동 계열)
 triceps_dip,트라이셉스 딥스,삼두,맨몸,신규,미등록,UNOBSERVABLE_MANUAL,,CYCLE_AXIS_RETURN,B,Y,C 추론만,"손은 바에 고정, 몸이 오르내림(풀업형)"
 diamond_push_up,다이아몬드 푸쉬업,삼두,맨몸,신규,미등록,UNOBSERVABLE_MANUAL,,CYCLE_AXIS_RETURN,B,Y,B 형제 운동이 MM-Fit 실측,푸시업 계열
-kickback_dumbbell,덤벨 킥백,삼두,덤벨,신규,미등록,FLEXION_EXTENSION,,FLEXION_EXTENSION,B,,B 형제 운동이 MM-Fit 실측,CSV 제안 유지(검증된 형제 운동 계열)
+kickback_dumbbell,스탠딩 덤벨 킥백,삼두,덤벨,신규,미등록,FLEXION_EXTENSION,,FLEXION_EXTENSION,B,,B 형제 운동이 MM-Fit 실측,CSV 제안 유지(검증된 형제 운동 계열)
+dumbbell_seated_kickback,덤벨 시티드 킥백,삼두,덤벨,신규,미등록,FLEXION_EXTENSION,,FLEXION_EXTENSION,B,,B 형제 운동이 MM-Fit 실측,CSV 제안 유지(검증된 형제 운동 계열)
 kickback_cable,케이블 킥백,삼두,케이블,신규,미등록,FLEXION_EXTENSION,,FLEXION_EXTENSION,B,,B 형제 운동이 MM-Fit 실측,CSV 제안 유지(검증된 형제 운동 계열)
 jm_press,JM 프레스,삼두,바벨,신규,미등록,PRESS_RETURN,,PRESS_RETURN,B,,C 추론만,CSV 제안 유지(검증된 형제 운동 계열)
 machine_dip,머신 딥스,삼두,머신,신규,미등록,PRESS_RETURN,,PRESS_RETURN,B,,C 추론만,CSV 제안 유지(검증된 형제 운동 계열)

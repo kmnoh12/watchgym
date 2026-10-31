@@ -29,7 +29,7 @@ class CameraCaptureGuideTest {
             CameraTimestampSource.PHONE_ELAPSED_REALTIME, "fixture-clock", listOf(image), listOf(world.map { it.copy(x = (it.x + it.z) / kotlin.math.sqrt(2.0), z = (it.z - it.x) / kotlin.math.sqrt(2.0)) }), true)
     }
     @Test fun allReviewedExercisesHaveAnExplicitGuideAndRequiredAnatomicalJoints() {
-        assertEquals(196, ExerciseMeasurementContracts.standard.size)
+        assertEquals(244, ExerciseMeasurementContracts.standard.size)
         ExerciseMeasurementContracts.standard.keys.forEach { id ->
             for (left in listOf(true, false)) {
                 val guide = CameraCaptureGuide.forExercise(id, left)
@@ -89,8 +89,10 @@ class CameraCaptureGuideTest {
         assertFalse(CameraCaptureGuide.forExercise("machine_reverse_fly", true).copy(viewTarget = null).startReady(visibleImage, open, true))
         val overhead = world(*base, 13 to Triple(0.0, -0.3, 0.0))
         val atChest = world(*base, 13 to Triple(0.0, 0.0, -0.3))
-        assertTrue(CameraCaptureGuide.forExercise("dumbbell_pullover", true).copy(viewTarget = null).startReady(visibleImage, overhead, true))
-        assertFalse(CameraCaptureGuide.forExercise("dumbbell_pullover", true).copy(viewTarget = null).startReady(visibleImage, atChest, true))
+        listOf("dumbbell_pullover", "barbell_pullover").forEach { id ->
+            assertTrue(CameraCaptureGuide.forExercise(id, true).copy(viewTarget = null).startReady(visibleImage, overhead, true), id)
+            assertFalse(CameraCaptureGuide.forExercise(id, true).copy(viewTarget = null).startReady(visibleImage, atChest, true), id)
+        }
     }
 
     @Test fun externalRotationOnlyChecksTheElbowSetUpAndHoldsLonger() {

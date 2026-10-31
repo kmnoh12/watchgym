@@ -65,8 +65,8 @@ class ExerciseRoutingConsistencyTest {
     }
 
     @Test fun catalogCountsStayStableAfterLegacyRopePushdownRemoval() {
-        assertEquals(229, ExerciseMotionCatalog.explicitBindings.size)
-        assertEquals(229, ExerciseCapabilityMatrix.standardExerciseIds().size)
+        assertEquals(252, ExerciseMotionCatalog.explicitBindings.size)
+        assertEquals(252, ExerciseCapabilityMatrix.standardExerciseIds().size)
         assertTrue("rope_pushdown" !in ExerciseCapabilityMatrix.standardExerciseIds())
         assertTrue("flat_machine_bench_press" in ExerciseCapabilityMatrix.standardExerciseIds())
     }

@@ -17,7 +17,8 @@ class SetIdentityTest {
     private val app get() = RuntimeEnvironment.getApplication()
     private fun snapshot() = WorkoutSnapshot(
         sessionId = "background-session", routineId = "shoulders", exerciseIndex = 0, setIndex = 0,
-        plannedSets = listOf(PlannedSetSnapshot(0, "external_rotation", 0, 10, 5.0, false), PlannedSetSnapshot(0, "external_rotation", 1, 10, 5.0, false)),
+        plannedSets = listOf(PlannedSetSnapshot(0, "external_rotation", 0, 10, 5.0, false, setId = "set-a", attemptId = "attempt-a"),
+            PlannedSetSnapshot(0, "external_rotation", 1, 10, 5.0, false, setId = "set-b", attemptId = "attempt-b")),
         performedReps = emptyMap(), phase = WorkoutPhase.WORKING, restEndAtMs = 0, pausedRestRemainingMs = 0,
         paused = false, startedAtMs = 1, pausedSinceMs = 0, totalPausedMs = 0, lastSequence = 0,
         lastCompletedSetKey = null, captureStates = emptyMap(),

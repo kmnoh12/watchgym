@@ -1,6 +1,5 @@
 package dev.kyungmin.kcoach.wear
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.os.Looper
 import android.view.View
@@ -40,19 +39,18 @@ class WatchWorkoutUiTest {
         assertFalse(texts(controller.get().window.decorView).any { it.text.contains("스마트폰 연결 대기") })
         controller.pause().stop().destroy()
     }
-    @Test fun phoneSuspicionShowsTheRestOrStartChoice() {
+    @Test fun preparingASetNeverShowsAPhoneViewingQuestion() {
         val app = RuntimeEnvironment.getApplication()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
-        val activity = controller.get()
         app.sendBroadcast(Intent(WearWorkoutService.ACTION_STATE).setPackage(app.packageName)
             .putExtra("session", "session").putExtra("setId", "set-2").putExtra("attemptId", "attempt-2")
             .putExtra("exerciseId", "dumbbell_curl").putExtra("exerciseName", "덤벨 컬")
-            .putExtra("running", true).putExtra("resting", false).putExtra("phase", "PHONE_CHECK")
+            .putExtra("running", true).putExtra("resting", false).putExtra("phase", "PREPARING")
             .putExtra("reps", 0).putExtra("targetReps", 10))
         shadowOf(Looper.getMainLooper()).idle()
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
-        assertNotNull(dialog)
-        assertEquals("폰 보고 있나요?", shadowOf(dialog!!).title)
+        assertTrue(dialog == null || !dialog.isShowing)
+        assertTrue(texts(controller.get().window.decorView).any { it.text == "준비" })
         controller.pause().stop().destroy()
     }
 

@@ -163,8 +163,8 @@ object WearSync {
 
     fun hello(device: String): String = listOf("1", device, System.currentTimeMillis()).joinToString("|")
 
-    fun heartbeat(device: String, phoneViewing: Boolean = false): String =
-        listOf("1", device, System.currentTimeMillis(), if (phoneViewing) "1" else "0").joinToString("|")
+    fun heartbeat(device: String): String =
+        listOf("1", device, System.currentTimeMillis()).joinToString("|")
 
     fun watchUiReady(sessionId: String = ""): String = listOf("1", sessionId, System.currentTimeMillis()).joinToString("|")
 

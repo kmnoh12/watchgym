@@ -12,8 +12,12 @@ data class ProgressionPlan(
     val key: ProgressionKey, val sets: List<ProgressionSetTarget>, val pattern: String,
     val load: ProgressionLoad = ProgressionLoad.EXTERNAL,
 )
-data class IncrementCandidate(val kg: Double?, val needsConfirmation: Boolean) {
-    init { require(kg == null || (kg.isFinite() && kg > 0)) }
+data class IncrementCandidate(val kg: Double?, val needsConfirmation: Boolean, val observedSteps: List<Double> = emptyList(), val confirmed: Boolean = false) {
+    init {
+        require(kg == null || (kg.isFinite() && kg > 0))
+        require(observedSteps.isEmpty() || (observedSteps.size >= 2 &&
+            observedSteps.all { it.isFinite() && it >= 0 } && observedSteps.zipWithNext().all { (a, b) -> b > a }))
+    }
 }
 
 object ProgressionDefaults {
@@ -25,14 +29,40 @@ object ProgressionDefaults {
     fun increment(equipment: String, observedWeights: List<Double> = emptyList(), confirmedKg: Double? = null): IncrementCandidate {
         if (confirmedKg != null) {
             require(confirmedKg.isFinite() && confirmedKg > 0)
-            return IncrementCandidate(confirmedKg, false)
+            return IncrementCandidate(confirmedKg, false, confirmed = true)
         }
         return when (equipment) {
-            "바벨" -> IncrementCandidate(5.0, false)
+            "바벨" -> IncrementCandidate(2.0, false)
             "덤벨" -> IncrementCandidate(2.0, false)
-            "머신", "케이블", "핀 머신" -> IncrementCandidate(observedWeights.filter { it.isFinite() && it >= 0 }.distinct().sorted().zipWithNext { a, b -> b - a }.minOrNull() ?: 5.0, false)
+            "머신", "케이블", "핀 머신" -> {
+                val steps = observedWeights.filter { it.isFinite() && it >= 0 }.distinct().sorted()
+                val gaps = steps.zipWithNext { a, b -> b - a }
+                val irregular = gaps.size > 1 && gaps.any { kotlin.math.abs(it - gaps.first()) > 0.001 }
+                IncrementCandidate(gaps.minOrNull() ?: 5.0, false, if (irregular) steps else emptyList())
+            }
             else -> IncrementCandidate(null, true)
         }
+    }
+
+    /** Only generated weights are snapped; actual records and explicit edits keep their precision. */
+    fun roundWeight(weightKg: Double, equipment: String): Double {
+        val step = if (equipment in setOf("머신", "케이블", "핀 머신")) 5.0 else if (equipment in setOf("바벨", "덤벨")) 2.0 else 1.0
+        return (kotlin.math.floor(weightKg / step + 0.5) * step).coerceAtLeast(step)
+    }
+
+    fun nextWeight(weightKg: Double, increment: IncrementCandidate, assistance: Boolean): Double {
+        val steps = increment.observedSteps
+        // Do not invent hardware stages beyond the recorded range.
+        if (steps.isNotEmpty()) {
+            if (assistance) return steps.lastOrNull { it < weightKg }
+                ?: weightKg
+            return steps.firstOrNull { it > weightKg } ?: weightKg
+        }
+        val step = increment.kg ?: return weightKg
+        val raw = if (assistance) (weightKg - step).coerceAtLeast(0.0) else weightKg + step
+        if (increment.confirmed) return raw
+        val rounded = kotlin.math.floor(raw / step + 0.5) * step
+        return if (assistance) minOf(rounded, weightKg) else maxOf(rounded, weightKg)
     }
 }
 

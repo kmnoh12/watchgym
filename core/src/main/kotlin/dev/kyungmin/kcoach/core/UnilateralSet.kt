@@ -32,12 +32,13 @@ data class UnilateralProgress(
 
 /** Only explicit one-arm variants opt in. Bilateral rows/machines must not be inferred from wrist silence. */
 object UnilateralExercises {
-    val ids: Set<String> = setOf("one_arm_lat_pull_down", "one_arm_dumbbell_row", "one_arm_cable_lateral",
+    val ids: Set<String> = setOf("kickback_cable", "one_arm_lat_pull_down", "one_arm_dumbbell_row", "one_arm_cable_lateral",
         "one_arm_cable_row", "single_arm_dumbbell_bench_press", "single_arm_dumbbell_shoulder_press",
-        "single_arm_cable_pushdown", "single_arm_cable_fly", "concentration_curl",
+        "single_arm_cable_pushdown", "concentration_curl",
         "single_arm_cable_external_rotation",
         "single_arm_cable_reverse_fly",
         "single_arm_machine_seated_row",
+        "single_arm_cable_seated_row",
         "single_arm_high_row_machine",
         "single_arm_plate_loaded_row",
         "single_arm_machine_lat_pulldown", // Historical unspecified machine; never migrate it to pin/plate automatically.
@@ -47,13 +48,18 @@ object UnilateralExercises {
         "single_arm_cable_overhead_extension",
         "single_arm_cable_curl",
         "single_arm_dumbbell_preacher_curl",
+        "single_arm_incline_bench_curl",
+        "single_arm_dumbbell_curl",
+        "single_arm_hammer_curl",
         "single_arm_bayesian_curl",
-        "single_arm_cable_kickback",
         "single_arm_dumbbell_kickback",
         "single_arm_chest_supported_dumbbell_row",
         "single_arm_machine_lateral_raise",
         "single_arm_dumbbell_lateral_raise",
         "single_arm_cable_front_raise",
+        "single_arm_landmine_press",
+        "cable_kickback_glute", "cable_glute_kickback", "machine_glute_kickback", // One leg kicks at a time; the other side follows after the watch side.
+        "standing_leg_curl", // The lever is single-leg by design: the other leg stands on the step, so the other side follows after the watch side.
         "meadows_row", // Always one arm at a time (landmine bar sleeve), so the other side follows after the watch side.
     )
     fun initial(exerciseId: String, completed: Boolean = false): UnilateralProgress? =

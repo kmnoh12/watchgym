@@ -37,7 +37,7 @@ class StartWristPolicyServiceTest {
             val deferred = ExerciseMotionCatalog.explicitBindings.filter {
                 StartWristOrientationPolicy.candidate(it.exerciseId) == StartWristCandidate.DEFERRED
             }
-            assertEquals(177, deferred.size)
+            assertEquals(201, deferred.size)
             for (exercise in deferred) {
                 controller.get().onStartCommand(command("START", exercise.exerciseId, revision++), 0, 1)
                 assertEquals(exercise.exerciseId, state().getStringExtra("exerciseId"))

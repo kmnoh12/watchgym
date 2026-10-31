@@ -27,8 +27,7 @@ data class StartPoseGateConfig(
         /**
          * A workout set waits for the wrist to hold still this long before the start buzz and counting.
          * Five real Watch8 preparation captures reached a stable hold at 1.50-1.56 s with the
-         * 0.20 rad drift bound. Phone-viewing suspicion is handled by a separate confirmation, so
-         * this is a wrist setup gate, not posture recognition.
+         * 0.20 rad drift bound. This is a wrist setup gate, not posture recognition.
          */
         const val WORKOUT_HOLD_MS = 1_500L
 

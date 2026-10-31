@@ -90,9 +90,6 @@ class MainActivity : Activity() {
     private var lastWorkingReps = 0
     private var lastWorkingWeight: Double? = null
     private var wasResting = false
-    private var phoneCheckDialog: AlertDialog? = null
-    /** The question must only exist while the round display is awake; a dialog left up on a stopped activity is stale. */
-    private var resumed = false
     /** 0 while the rest runs, 1 when it is paused; animated over 340 ms when the pause state changes (design 4-1). */
     private var restMorphTarget = 0f
     private var restMorphAnimator: android.animation.ValueAnimator? = null
@@ -248,9 +245,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        resumed = true
-        // The screen may have been off while the service raised the phone-viewing question.
-        // Ask for the live phase so the watch shows the question instead of a stale page.
+        // Refresh the live workout phase after returning to the screen.
         startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "QUERY"))
         updateScreenPolicy()
         otaCoordinator.attach(this)
@@ -260,9 +255,6 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
-        resumed = false
-        phoneCheckDialog?.takeIf { it.isShowing }?.dismiss()
-        phoneCheckDialog = null
         otaCoordinator.detach(this)
         handler.removeCallbacks(clockTicker)
         super.onPause()
@@ -288,8 +280,8 @@ class MainActivity : Activity() {
     private fun buildUi(): View {
         face = WatchWorkoutFace(this)
         face.action.setOnClickListener { openFinishedWorkout() }
-        face.restSkip.onClick = { requestWorkoutControl() }
-        face.restPause.onClick = { toggleRestPause() }
+        face.restSkip.onClick = { if (runtimePhase == SIDE_PHASE) sendSideDecision(dev.kyungmin.kcoach.core.WatchWorkoutAction.FINISH_WATCH_SIDE_ONLY) else requestWorkoutControl() }
+        face.restPause.onClick = { if (runtimePhase == SIDE_PHASE) sendSideDecision(dev.kyungmin.kcoach.core.WatchWorkoutAction.START_OTHER_SIDE) else toggleRestPause() }
         face.jog.onStep = { delta -> adjustRest(delta) }
         face.hint.setOnClickListener { if (runtimePhase == "START_DIRECTION_WAITING") bypassStartDirection() else if (face.noticeAction != null) face.noticeAction?.invoke() }
         editPage = EditPageView(this).apply {
@@ -683,6 +675,8 @@ class MainActivity : Activity() {
         face.size(face.value, if (active) 88f else 24f)
         face.value.setTextColor(WatchWorkoutFace.SAGE)
         listOf(face.jog, face.restPause, face.restSkip).forEach { it.visibility = View.GONE }
+        listOf(face.restPause, face.restSkip).forEach { it.caption = null; it.isEnabled = true; it.alpha = 1f }
+        val awaitingSide = active && !resting && !paused && runtimePhase == SIDE_PHASE
         // The rest buttons need the phone to apply them, also while the rest is paused.
         val restControls = resting && workoutControls.supportsControls() && setId.isNotBlank() && attemptId.isNotBlank()
         if (!resting) { restMorphTarget = 0f; restMorphAnimator?.cancel(); restRing.fade = 0f }
@@ -721,6 +715,16 @@ class MainActivity : Activity() {
                 morphRest(restPaused)
                 face.applyRestMorph()
             }
+            if (awaitingSide) {
+                // First arm done: three seconds to start the other arm, otherwise the rest begins.
+                val controls = workoutControls.supportsControls() && setId.isNotBlank() && attemptId.isNotBlank()
+                face.setSubtitle("한쪽 완료", WatchWorkoutFace.SOFT, medium = true)
+                face.value.text = "반대손"; face.size(face.value, 40f)
+                face.target.visibility = View.GONE
+                face.hint.text = if (controls) "3초 후 휴식" else "폰에서 선택"
+                face.restPause.caption = "반대손"; face.restSkip.caption = "휴식"
+                listOf(face.restPause, face.restSkip).forEach { it.visibility = View.VISIBLE; it.isEnabled = controls; it.alpha = if (controls) 1f else .4f }
+            }
             if (paused && !restPaused) face.hint.text = "폰에서 계속할 수 있어요"
             face.layoutCount(); face.layoutMetrics()
         } else if (complete) {
@@ -742,7 +746,7 @@ class MainActivity : Activity() {
             if (homeStore.overview() == null) face.hint.text = "폰에서 기록을 확인하세요"
             face.heart.show(0)
         }
-        updatePhoneCheckDialog()
+        armSideDecision(awaitingSide)
         // One status line under the numbers, most urgent first; every message here used to be its own control.
         val updateWaiting = otaCoordinator.store.local()?.phase == dev.kyungmin.kcoach.updates.OtaPhase.USER_ACTION_REQUIRED
         val phaseMessage = when (runtimePhase) {
@@ -822,34 +826,6 @@ class MainActivity : Activity() {
     private var lastCountShown = ""
 
     /** The old number slides up and out while the new one rises in from below, quickly and without any bounce. */
-    private fun updatePhoneCheckDialog() {
-        val wanted = resumed && running && runtimePhase == "PHONE_CHECK"
-        if (!wanted) {
-            phoneCheckDialog?.takeIf { it.isShowing }?.dismiss()
-            phoneCheckDialog = null
-            return
-        }
-        if (phoneCheckDialog?.isShowing == true) return
-        if (isFinishing || isDestroyed) return
-        // The state broadcast can arrive while the round display is asleep or tearing down.
-        // Adding a window then throws BadTokenException on the main thread and kills the whole
-        // process, taking the live rest timer with it; the question is simply retried on resume.
-        phoneCheckDialog = runCatching {
-            AlertDialog.Builder(this)
-                .setTitle("폰 보고 있나요?")
-                .setMessage("폰을 보는 동안에는 이 세트를 시작하지 않아요.")
-                .setCancelable(false)
-                .setPositiveButton("운동 시작") { _, _ -> sendPhoneCheck("PHONE_CHECK_START") }
-                .setNegativeButton("휴식") { _, _ -> sendPhoneCheck("PHONE_CHECK_REST") }
-                .show()
-        }.getOrNull()
-        if (phoneCheckDialog?.isShowing != true) phoneCheckDialog = null
-    }
-
-    private fun sendPhoneCheck(command: String) {
-        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, command))
-    }
-
     private fun rollCountIfChanged(measuring: Boolean) {
         val shown = face.value.text.toString()
         if (!measuring || shown.firstOrNull()?.isDigit() != true) { lastCountShown = ""; return }
@@ -923,6 +899,28 @@ class MainActivity : Activity() {
             }
         }
         shadowText.invalidate()
+    }
+
+    private val sideDecisionTimeout = Runnable { sendSideDecision(dev.kyungmin.kcoach.core.WatchWorkoutAction.FINISH_WATCH_SIDE_ONLY) }
+    private var sideDecisionKey: String? = null
+
+    /** Starts the three second countdown once per set; leaving the question stops it. */
+    private fun armSideDecision(waiting: Boolean) {
+        if (!waiting) { handler.removeCallbacks(sideDecisionTimeout); sideDecisionKey = null; return }
+        val key = "$sessionId|$setId|$attemptId"
+        if (key == sideDecisionKey) return
+        sideDecisionKey = key
+        handler.removeCallbacks(sideDecisionTimeout)
+        handler.postDelayed(sideDecisionTimeout, SIDE_DECISION_MS)
+    }
+
+    private fun sendSideDecision(action: dev.kyungmin.kcoach.core.WatchWorkoutAction) {
+        if (runtimePhase != SIDE_PHASE || workoutControls.pending().isNotEmpty() || !workoutControls.supportsControls() ||
+            sessionId.isBlank() || setId.isBlank() || attemptId.isBlank()) return
+        handler.removeCallbacks(sideDecisionTimeout)
+        val request = dev.kyungmin.kcoach.core.WatchWorkoutControl(java.util.UUID.randomUUID().toString(), action, sessionId, setId, attemptId)
+        startServiceSafely(Intent(this, WearWorkoutService::class.java).putExtra(WearWorkoutService.EXTRA_COMMAND, "WORKOUT_CONTROL_SUBMIT")
+            .putExtra("payload", request.encode()))
     }
 
     private fun requestWorkoutControl() {
@@ -1161,3 +1159,6 @@ class MainActivity : Activity() {
 }
 
 private const val WORKING_BRIGHTNESS = 0.1f
+
+private const val SIDE_PHASE = "AWAITING_OTHER_SIDE"
+private const val SIDE_DECISION_MS = 3_000L

@@ -800,10 +800,7 @@ class MainActivity : ComponentActivity() {
             addExercise = {
                 openLibrary(
                     onSelect = {
-                        routine.exercises += RoutineExercise(
-                            exercise = it,
-                            sets = mutableListOf(PlannedSet(null, 10)),
-                        )
+                        routine.exercises += newRoutineExercise(it)
                         if (routines.any { saved -> saved === routine }) saveRoutineLibrary()
                         commitRunningRoutineEdit(routine)
                     },
@@ -857,7 +854,7 @@ class MainActivity : ComponentActivity() {
                 openLibrary(
                     onSelect = {
                         if (freeExercises.none { row -> row.exercise.id == it.id }) {
-                            freeExercises += RoutineExercise(it, mutableListOf(PlannedSet(null, 10)))
+                            freeExercises += newRoutineExercise(it)
                         }
                     },
                     onReturn = reload,
@@ -1121,6 +1118,7 @@ class MainActivity : ComponentActivity() {
             sections = sections,
             records = if (lastWorkoutResult?.sessionId == result.sessionId) lastWorkoutRecords else emptyList(),
             footnote = ANALYSIS_ESTIMATE_NOTE,
+            sessionId = result.sessionId,
         )
         showStandalone(ComposeView(this).apply {
             setContent { WorkoutResultScreen(ui, back = { onBackPressed() }, toRecords = { showRecords() },
@@ -1538,6 +1536,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var otherSideAskedKey: String? = null
+
+    /** First arm done: ask once per set whether the other arm follows. The watch ends the question after three seconds. */
+    private fun askOtherSide(snapshot: WorkoutSnapshot) {
+        val set = snapshot.plannedSets.firstOrNull {
+            !it.completed && it.unilateral?.stage == dev.kyungmin.kcoach.core.UnilateralStage.AWAITING_OTHER_SIDE
+        }
+        if (set == null) { otherSideAskedKey = null; return }
+        val key = "${set.setId}|${set.attemptId}"
+        if (key == otherSideAskedKey) return
+        otherSideAskedKey = key
+        showChoiceSheet("반대손 측정", listOf("start" to "반대손 측정", "rest" to "휴식")) { value ->
+            val action = if (value == "start") dev.kyungmin.kcoach.core.UnilateralAction.START_OTHER_SIDE
+                else dev.kyungmin.kcoach.core.UnilateralAction.FINISH_WATCH_SIDE_ONLY
+            PhoneSessionController(sessionStore, ::sendWear)
+                .unilateralAction(snapshot.sessionId, set.setId, set.attemptId, action, System.currentTimeMillis())
+                .onFailure { Log.e(EVENT_TAG, "other side choice failed", it) }
+            refreshActiveSession()
+        }
+    }
+
     private fun refreshActiveSession() {
         if (activeWorkout == null) {
             activeWorkout = restoreActiveWorkout() ?: return
@@ -1553,6 +1572,7 @@ class MainActivity : ComponentActivity() {
         workout.analyses.clear()
         workout.analyses.putAll(SetAnalysisStore(this).loadForSession(workout.sessionId))
         lastCompletedLiveKey = snapshot.lastCompletedSetKey
+        askOtherSide(snapshot)
         if (snapshot.exerciseIndex >= workout.routine.exercises.size &&
             currentScreen in setOf(Screen.ACTIVE, Screen.REST)) {
             showMyMountainDecision()
@@ -1706,6 +1726,10 @@ class MainActivity : ComponentActivity() {
             weekSets,
         )
     }
+
+    private fun newRoutineExercise(exercise: ExerciseDefinition): RoutineExercise =
+        ExerciseDefaults.newExercise(exercise, UserProfileStore(this).deviceProfile()?.profile,
+            ExerciseHistoryStore(this).load().all)
 
     private fun prefillProgression(routine: WorkoutRoutine) {
         ProgressionPlanStore(this).prefill(routine)
@@ -2039,7 +2063,7 @@ class MainActivity : ComponentActivity() {
                 return
             }
             beginWorkoutEdit(workout)
-            val source = routineExercise.sets.lastOrNull() ?: PlannedSet(null, 10)
+            val source = routineExercise.sets.lastOrNull() ?: newRoutineExercise(routineExercise.exercise).sets.single()
             routineExercise.sets += PlannedSet(source.weightKg, source.targetReps, gripType = source.gripType, restSeconds = source.restSeconds)
             if (!persistActiveWorkout(workout)) return
             if (activeWorkout === workout) resyncActiveWorkoutToWatch(workout)
@@ -2436,7 +2460,7 @@ class MainActivity : ComponentActivity() {
                         dismiss()
                         openLibrary(
                             onSelect = {
-                                workout.routine.exercises += RoutineExercise(it, mutableListOf(PlannedSet(null, 10)))
+                                workout.routine.exercises += newRoutineExercise(it)
                                 commitRunningRoutineEdit(workout.routine)
                             },
                             onReturn = { returnToBrowsedWorkoutPage(workout, pageIndex) },
@@ -2717,6 +2741,16 @@ class MainActivity : ComponentActivity() {
         heightDp: Int,
         compact: Boolean = false,
     ): View {
+        if (Exercise3DView.has(this, exercise.id)) {
+            val radiusDp = if (compact) 12 else 20
+            return Exercise3DView(this, exercise.id).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(heightDp))
+                background = rounded(Color.rgb(52, 50, 46), radiusDp)
+                outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+                clipToOutline = true
+                contentDescription = "${exercise.name} 3D 동작"
+            }
+        }
         val resName = "exercise_${exercise.id}"
         val animationRes = resources.getIdentifier(resName, "drawable", packageName).takeIf { it != 0 }
             ?: return anatomyPlaceholder(heightDp)
@@ -3064,7 +3098,7 @@ class MainActivity : ComponentActivity() {
                         dismiss()
                         openLibrary(
                             onSelect = {
-                                routine.exercises += RoutineExercise(it, mutableListOf(PlannedSet(null, 10)))
+                                routine.exercises += newRoutineExercise(it)
                                 if (routines.any { saved -> saved === routine }) saveRoutineLibrary()
                             },
                             onReturn = { showRoutine(routine) },

@@ -94,7 +94,9 @@ internal class RoutineLibraryStore(
                                 setId = set.requiredString("setId"), attemptId = set.requiredString("attemptId"),
                                 identityRequired = set.getBoolean("identityRequired"),
                             )
-                        }.toMutableList(), item.getInt("restSeconds"))
+                        }.toMutableList(), item.getInt("restSeconds")).also {
+                            if (it.restSeconds == 90) it.restSeconds = ExerciseDefaults.restSeconds(it.exercise)
+                        }
                 }.toMutableList(),
                 if (routine.isNull("lastPerformedEpochDay")) null else routine.getLong("lastPerformedEpochDay"),
             )
@@ -113,7 +115,7 @@ internal class RoutineLibraryStore(
         value.requiredString("id"), value.requiredString("name"), value.getString("muscles"),
         value.getString("bodyCategory"), value.getString("equipment"), value.getBoolean("favorite"),
         value.getString("pattern"), value.getString("family"),
-    )
+    ).let { if (it.id in setOf("weighted_dip", "weighted_pull_up")) it.copy(equipment = "기타") else it }
 
     private fun JSONObject.requiredString(key: String) = getString(key).also { require(it.isNotBlank()) }
     private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }

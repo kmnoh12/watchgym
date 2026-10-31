@@ -35,7 +35,6 @@ class PhoneWorkoutService : Service() {
     private var heartbeatTicker: Runnable? = null
     private var restTicker: Runnable? = null
     private val sessionStore by lazy { SessionStore(this) }
-    private val viewingDetector by lazy { PhoneViewingDetector(this) }
     private val sessionController by lazy { PhoneSessionController(sessionStore, wearBridge::sendRaw) }
     private var idleSinceMs = -1L
     private var taskRemoved = false
@@ -61,7 +60,6 @@ class PhoneWorkoutService : Service() {
             }
         }.onFailure { Log.w("KCoachEvent", "interrupted camera owner recovery retained", it) }
         wearBridge.sendHello()
-        viewingDetector.start()
         startHeartbeat()
         startRestTicker()
         if (PhoneCommandOutbox(this).pending() == null) {
@@ -86,7 +84,7 @@ class PhoneWorkoutService : Service() {
         startHeartbeat()
         startRestTicker()
         if (intent?.getStringExtra(EXTRA_ACTION) == ACTION_PING) {
-            wearBridge.sendHeartbeat(viewingDetector.isViewing())
+            wearBridge.sendHeartbeat()
         }
         if (intent?.getStringExtra(EXTRA_ACTION) == ACTION_RETRY) wearBridge.retryPendingCommand()
         val path = intent?.getStringExtra(EXTRA_PATH)
@@ -128,7 +126,6 @@ class PhoneWorkoutService : Service() {
         heartbeatTicker = null
         restTicker?.let(handler::removeCallbacks)
         restTicker = null
-        viewingDetector.stop()
         if (taskRemoved) wearBridge.closeAfterPendingDelivery() else wearBridge.close()
         super.onDestroy()
     }
@@ -140,7 +137,7 @@ class PhoneWorkoutService : Service() {
         val tick = object : Runnable {
             override fun run() {
                 if (stopIfIdle(SystemClock.elapsedRealtime())) return
-                if (hasActiveRuntime()) wearBridge.sendHeartbeat(viewingDetector.isViewing()) else wearBridge.retryPendingCommand()
+                if (hasActiveRuntime()) wearBridge.sendHeartbeat() else wearBridge.retryPendingCommand()
                 handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
             }
         }

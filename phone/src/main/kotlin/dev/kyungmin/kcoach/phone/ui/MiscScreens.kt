@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import dev.kyungmin.kcoach.phone.ResultImageExport
+import dev.kyungmin.kcoach.phone.ResultTextExport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -205,6 +206,7 @@ class ResultUi(
     val sections: List<ResultSectionUi>,
     val footnote: String,
     val records: List<RecordUi> = emptyList(),
+    val sessionId: String? = null,
 )
 
 @Composable
@@ -214,6 +216,22 @@ fun WorkoutResultScreen(result: ResultUi, back: () -> Unit, toRecords: () -> Uni
     // The content column is taller than the viewport, so recording it here exports the whole page.
     val capture = rememberGraphicsLayer()
     var exporting by remember { mutableStateOf(false) }
+
+    fun exportText() {
+        val sessionId = result.sessionId ?: return
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            try {
+                val saved = withContext(Dispatchers.IO) { ResultTextExport.save(context.applicationContext, sessionId) }
+                saved.exceptionOrNull()?.let { android.util.Log.e("KCoachEvent", "result text export failed", it) }
+                Toast.makeText(context, if (saved.isSuccess) "다운로드/워치짐에 텍스트로 저장했어요"
+                    else "텍스트를 저장하지 못했어요", Toast.LENGTH_LONG).show()
+            } finally {
+                exporting = false
+            }
+        }
+    }
 
     fun export(share: Boolean) {
         if (exporting) return
@@ -259,7 +277,8 @@ fun WorkoutResultScreen(result: ResultUi, back: () -> Unit, toRecords: () -> Uni
                     .padding(horizontal = 20.dp, vertical = 20.dp),
             ) {
                 DetailHeader("운동 완료 결과", back, menu = {
-                    ResultMenu(enabled = !exporting, onShare = { export(true) }, onSave = { export(false) })
+                    ResultMenu(enabled = !exporting, onShare = { export(true) }, onSave = { export(false) },
+                        onSaveText = if (result.sessionId != null) ({ exportText() }) else null)
                 })
                 Spacer(Modifier.height(24.dp))
                 Text(result.title, color = KColors.White, fontSize = 32.sp, fontWeight = FontWeight.Medium)
@@ -301,7 +320,7 @@ fun WorkoutResultScreen(result: ResultUi, back: () -> Unit, toRecords: () -> Uni
 }
 
 @Composable
-private fun ResultMenu(enabled: Boolean, onShare: () -> Unit, onSave: () -> Unit) {
+private fun ResultMenu(enabled: Boolean, onShare: () -> Unit, onSave: () -> Unit, onSaveText: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     Box(Modifier.fillMaxSize()) {
@@ -319,6 +338,7 @@ private fun ResultMenu(enabled: Boolean, onShare: () -> Unit, onSave: () -> Unit
                 Column(Modifier.width(188.dp).clip(KShape.Control).background(KColors.SurfaceRaised).padding(vertical = 6.dp)) {
                     ResultMenuItem("이미지로 공유") { open = false; onShare() }
                     ResultMenuItem("이미지로 저장") { open = false; onSave() }
+                    onSaveText?.let { save -> ResultMenuItem("텍스트로 저장") { open = false; save() } }
                 }
             }
         }

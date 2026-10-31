@@ -118,8 +118,6 @@ class WearCommandService : WearableListenerService() {
             return
         }
         if (path == WearSync.PATH_HEARTBEAT) {
-            val heartbeat = WearSync.parse(payload)
-            PhoneViewingStore(this).update(heartbeat.getOrNull(3) == "1", android.os.SystemClock.elapsedRealtimeNanos())
             val state = getSharedPreferences("workout-runtime", MODE_PRIVATE).getString("state", null)
                 ?.let { runCatching { JSONObject(it) }.getOrNull() }
             val ownsSession = state?.optString("session").orEmpty().isNotBlank()

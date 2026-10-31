@@ -37,12 +37,44 @@ class WorkoutSnapshotTest {
         assertEquals(snapshot, WorkoutSnapshotCodec.decode(WorkoutSnapshotCodec.encode(snapshot)))
     }
 
+    /** Writes the layout that schema 6 used: no per-set one-arm state and no rest versions. */
+    private fun versionSixBytes(value: WorkoutSnapshot): ByteArray {
+        val output = ByteArrayOutputStream()
+        fun DataOutputStream.str(text: String) { val b = text.toByteArray(Charsets.UTF_8); writeInt(b.size); write(b) }
+        DataOutputStream(output).use { data ->
+            data.writeInt(0x4B435331); data.writeInt(6)
+            data.str(value.sessionId); data.str(value.routineId)
+            data.writeInt(value.exerciseIndex); data.writeInt(value.setIndex)
+            data.writeInt(value.plannedSets.size)
+            value.plannedSets.forEach { set ->
+                data.writeInt(set.exerciseIndex); data.str(set.exerciseId); data.writeInt(set.setIndex); data.writeInt(set.targetReps)
+                data.writeBoolean(set.weightKg != null); set.weightKg?.let(data::writeDouble)
+                data.writeBoolean(set.completed); data.str(set.setType); data.str(set.exerciseName)
+                data.writeInt(set.restSeconds); data.writeInt(set.exerciseRestSeconds)
+                data.writeBoolean(set.restOverrideSeconds != null); set.restOverrideSeconds?.let(data::writeInt)
+                data.writeBoolean(set.performedReps != null); set.performedReps?.let(data::writeInt)
+                data.str(set.repSource?.name.orEmpty())
+                data.str(set.exerciseMuscles); data.str(set.bodyCategory); data.str(set.equipment)
+                data.str(set.pattern); data.str(set.family); data.str(set.gripType)
+                data.writeBoolean(set.rpe != null); set.rpe?.let { data.str(it) }
+                data.str(set.setId); data.str(set.attemptId); data.writeBoolean(set.identityRequired)
+            }
+            data.writeInt(value.performedReps.size)
+            value.performedReps.toSortedMap().forEach { (id, reps) -> data.str(id); data.writeInt(reps) }
+            data.writeInt(value.phase.ordinal); data.writeLong(value.restEndAtMs); data.writeLong(value.pausedRestRemainingMs)
+            data.writeBoolean(value.paused); data.writeLong(value.startedAtMs); data.writeLong(value.pausedSinceMs)
+            data.writeLong(value.totalPausedMs); data.writeLong(value.lastSequence)
+            data.writeBoolean(value.lastCompletedSetKey != null); value.lastCompletedSetKey?.let { data.str(it) }
+            data.writeInt(value.captureStates.size)
+            value.captureStates.toSortedMap().forEach { (id, state) -> data.str(id); data.writeInt(state.ordinal) }
+            data.str(value.routineName)
+        }
+        return output.toByteArray()
+    }
+
     @Test
     fun `version six snapshots restore missing rest versions as zero`() {
-        val current = Base64.getUrlDecoder().decode(WorkoutSnapshotCodec.encode(snapshot))
-        val legacy = current.copyOf(current.size - 16)
-        java.nio.ByteBuffer.wrap(legacy).putInt(4, 6)
-        val decoded = WorkoutSnapshotCodec.decode(Base64.getUrlEncoder().withoutPadding().encodeToString(legacy))
+        val decoded = WorkoutSnapshotCodec.decode(Base64.getUrlEncoder().withoutPadding().encodeToString(versionSixBytes(snapshot)))
         assertEquals(snapshot.copy(restRev = 0, watchRestSeq = 0), decoded)
     }
 

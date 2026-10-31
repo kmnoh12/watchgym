@@ -58,7 +58,8 @@ class CurlCaptureTest {
         repeat(25) { send(0.0, 0.0) }
         assertEquals(5, field("reps").get(service))
         assertEquals("Reaching the target must keep collecting the user's movement", true, field("running").get(service))
-        repeat(25) { send(0.0, 0.0) }
+        // The set ends after 1.2 s of stillness from the last rep, so stay inside that window before the explicit stop.
+        repeat(15) { send(0.0, 0.0) }
         service.onStartCommand(Intent().putExtra("command", "STOP").putExtra("session", "curl-capture")
             .putExtra("commandRevision", 2L), 0, 2)
         assertEquals(false, field("running").get(service))

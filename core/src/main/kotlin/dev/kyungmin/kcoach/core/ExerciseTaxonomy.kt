@@ -34,9 +34,12 @@ object ExerciseTaxonomy {
     /** Movements that count as a main exercise for two body parts and are listed under both. */
     private val sharedBodies = mapOf("dip" to listOf("가슴", "삼두"), "pullover" to listOf("가슴", "등"))
 
+    /** Single exercises that are also listed under another body part (diamond push-ups: triceps tab alone, chest tab with the push-up group). */
+    private val sharedExerciseBodies = mapOf("diamond_push_up" to listOf("가슴"), "landmine_press" to listOf("어깨"), "single_arm_landmine_press" to listOf("어깨")) + listOf("romanian_deadlift_barbell", "romanian_deadlift_dumbbell", "stiff_leg_deadlift", "conventional_deadlift", "sumo_deadlift", "trap_bar_deadlift", "dumbbell_deadlift").associateWith { listOf("등") }
+
     /** Every body part an exercise is listed under, its own first. */
-    fun bodies(bodyCategory: String, pattern: String): List<String> =
-        listOf(bodyCategory) + sharedBodies[pattern].orEmpty().filter { it != bodyCategory }
+    fun bodies(bodyCategory: String, pattern: String, exerciseId: String = ""): List<String> =
+        (listOf(bodyCategory) + sharedBodies[pattern].orEmpty() + sharedExerciseBodies[exerciseId].orEmpty()).distinct()
 
     fun bodyRank(bodyCategory: String): Int = bodyOrder.indexOf(bodyCategory).let { if (it < 0) bodyOrder.size else it }
 }
